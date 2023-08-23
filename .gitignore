@@ -1,0 +1,6 @@
+node_modules
+tmp
+*.out
+__pycache__
+web-ext-artifacts
+.env
