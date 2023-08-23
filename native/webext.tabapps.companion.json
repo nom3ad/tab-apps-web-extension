@@ -1,0 +1,9 @@
+{
+  "name": "webext.tabapps.companion",
+  "type": "stdio",
+  "description": "Tab Apps -  companion native client",
+  "path": "path/to/native/exec.sh",
+  "allowed_extensions": [
+    "tabapps@webext"
+  ]
+}
