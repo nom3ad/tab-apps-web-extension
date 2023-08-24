@@ -4,3 +4,4 @@ tmp
 __pycache__
 web-ext-artifacts
 .env
+webext/.web-extension-id

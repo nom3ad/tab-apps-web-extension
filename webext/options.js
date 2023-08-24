@@ -58,7 +58,7 @@ function uiBoostrap() {
             if (apps.find(a => !a.id)) {
                 return
             }
-            apps.push({ id: '', _unsaved: true })
+            apps.push({ id: '', enabled: true, _unsaved: true })
         },
         deleteAppItem(item) {
             console.log("deleteItem()", item)

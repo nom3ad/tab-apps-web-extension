@@ -7,24 +7,6 @@ const SAMPLE_APPS = [
         match: '^https?://example\\.com',
         url: 'https://example.com',
         icon: '',
-    },
-    {
-        id: 'mdn',
-        enabled: false,
-        label: 'MDN',
-        autostart: false,
-        match: '^https?://developer\\.mozilla\\.org',
-        url: 'https://developer.mozilla.org',
-        icon: 'https://developer.mozilla.org/favicon.ico',
-    },
-    {
-        id: 'slack',
-        enabled: false,
-        label: 'Slack',
-        autostart: false,
-        match: '(^https?://app\\.slack\\.com)|(https://slack.com)',
-        url: 'https://app.slack.com',
-        icon: 'https://app.slack.com/favicon.ico',
     }
 ]
 

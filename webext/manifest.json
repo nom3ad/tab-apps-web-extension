@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Tab Apps",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "This extension allows you to handle tab as a windowed app",
   "homepage_url": "https://github.com/nom3ad/tab-as-app-web-extension",
   "browser_specific_settings": {
