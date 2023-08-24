@@ -1,6 +1,30 @@
 
 //@ts-check
 
+
+class CompanionAppCtl extends NativeAppCtl {
+
+  postWindowAction(appId, action) {
+    this.post("window-action", { appId, action });
+  }
+
+  postPing() {
+    this.post("ping");
+  }
+
+  postConfig(config) {
+    this.post("config", { ...config, managerId: appsMgr.managerId });
+  }
+
+  postAppLauch(app) {
+    this.post("app-launch", { appId: app.id, windowTitleFingerprint: app.windowTitleFingerprint });
+  }
+
+  postAppClose(appId) {
+    this.post("app-close", { appId });
+  }
+}
+
 class AppItem {
   constructor(cfg, windowTitleFingerprint) {
     this.id = cfg.id
@@ -25,6 +49,10 @@ class AppItem {
 
   get windowId() {
     return this._lauched?.windowId ?? null
+  }
+
+  get nativeWindow() {
+    return this._lauched?.nativeWindow ?? null
   }
 
   get windowTitleFingerprint() {
@@ -73,6 +101,12 @@ class AppItem {
       tabId,
       windowId,
       activeUrl,
+    }
+  }
+
+  $setNativeWindowIdState({ nativeWindowId }) {
+    if (this._lauched) {
+      this._lauched.nativeWindow = { id: nativeWindowId }
     }
   }
 
@@ -127,7 +161,6 @@ class AppItem {
 
 browser.storage.sync.onChanged.addListener((changes) => {
   console.log("storage.sync.onChanged", changes)
-  // @ts-ignore
   getConfig().then(config => appsMgr.updateConfig(config))
 })
 
@@ -135,16 +168,26 @@ browser.storage.sync.onChanged.addListener((changes) => {
 class AppsManager {
 
   /**
+   * @param {CompanionAppCtl} companionAppCtl
    * @param {{ apps: { id: string, url: string, match: string, autostart: boolean }[] }} config
    */
-  constructor({ apps }) {
-
+  constructor(companionAppCtl, { apps }) {
+    this._companionAppCtl = companionAppCtl
     const extensionInstanceUUID = new URL(browser.runtime.getURL('')).host
     this.managerId = btoa(extensionInstanceUUID).replace(/\=\/\+/g, '').substring(0, 8)
     console.info("Extension instance uuid: ", extensionInstanceUUID, "AppManagerId: ", this.managerId)
 
     this.apps = new Map(apps?.map(appCfg => [appCfg.id, new AppItem(appCfg, this._getWindowTitleFingerprintForAppId(appCfg.id))]))
 
+    this._companionAppCtl.addEventListener('ping', () => this._companionAppCtl.postPing())
+    this._companionAppCtl.addEventListener('ready', () => { })
+    this._companionAppCtl.addEventListener('dump', () => { })
+
+
+    this._companionAppCtl.addEventListener('window-state', (ev) => {
+      //@ts-ignore
+      const app = this.apps.get(ev.detail.appId)?.$setNativeWindowIdState({ nativeWindowId: ev.detail.nativeWindowId })
+    })
     this._reconsile()
   }
 
@@ -158,12 +201,12 @@ class AppsManager {
           console.info("Reconsile existing app window", { app, window: w })
           const t = (await browser.tabs.query({ windowId: w.id, active: true }))[0]
           app.$setLaunchState(w.id, t.id, t.url)
-          companionAppCtl.postAppLauch(app)
+          this._companionAppCtl.postAppLauch(app)
         }
       }
     })
-
   }
+
 
   async updateConfig({ apps }) {
     console.log("updateConfig()", { apps })
@@ -173,7 +216,7 @@ class AppsManager {
       }
       return app.enabled
     })
-    const pendingAppIds = new Set(this.apps.keys())
+    const remainingAppIds = new Set(this.apps.keys())
     for (const appCfg of apps) {
       const appId = appCfg.id
       const windowTitleFingerprint = this._getWindowTitleFingerprintForAppId(appId)
@@ -185,23 +228,22 @@ class AppsManager {
         if (currentAppTab && !appItem.isUrlMatches(currentAppTab.url)) {
           console.info("Config change: appId: %s | Current app tab url does not match new config. Releasing app tab", appId, { appItem, currentAppTab })
           appItem.$unsetLaunchState()
-          companionAppCtl.postAppClose(appItem.id);
+          this._companionAppCtl.postAppClose(appItem.id);
           openInNonAppWindow(currentAppTab.id)
         }
-        pendingAppIds.delete(appId)
+        remainingAppIds.delete(appId)
       } else {
         console.log("Config change: new app added. appId: %s", appId, { appCfg })
         this.apps.set(appId, new AppItem(appCfg, windowTitleFingerprint))
       }
     }
-    for (const appId of pendingAppIds) {
+    for (const appId of remainingAppIds) {
       console.info("Config change: app was removed. appId: %s", appId)
-      this.apps[appId].unsetLaunchState()
-      companionAppCtl.postAppClose(appId);
+      this._companionAppCtl.postAppClose(appId);
       this.apps.delete(appId)
     }
 
-    companionAppCtl.postConfig({ apps })
+    this._companionAppCtl.postConfig({ apps })
     await this._reconsile()
   }
 
@@ -217,7 +259,7 @@ class AppsManager {
     await appItem.$launch(options)
     // TODO: implement navigation complete listener to detect when app tab is ready
     await new Promise(resolve => setTimeout(resolve, 100));
-    companionAppCtl.postAppLauch(appItem)
+    this._companionAppCtl.postAppLauch(appItem)
   }
 
   async unlaunch(appId) {
@@ -226,7 +268,7 @@ class AppsManager {
       throw new Error(`App not found: ${appId}`)
     }
     appItem.$unsetLaunchState()
-    companionAppCtl.postAppClose(appItem.id);
+    this._companionAppCtl.postAppClose(appItem.id);
   }
 
   async launchAllAutostartable() {
@@ -238,7 +280,7 @@ class AppsManager {
         }
         console.log("Autostarting app", { appItem })
         await this.launch(appItem.id)
-        companionAppCtl.postWindowAction(appItem.id, 'iconify')
+        this._companionAppCtl.postWindowAction(appItem.id, 'iconify')
       }
     }
   }
@@ -273,59 +315,7 @@ class AppsManager {
 }
 
 
-class CompanionAppCtl {
-
-  constructor() {
-    this._ensureConnected()
-  }
-
-  async _ensureConnected() {
-    let companionAppNativePort = browser.runtime.connectNative('webext.tabapps.companion');
-    this.companionAppNativePort = companionAppNativePort;
-    companionAppNativePort.onDisconnect.addListener(() => {
-      const retryAfterMs = 5000;
-      this.companionAppNativePort = null;
-      console.log("Disconnected from native app", companionAppNativePort.error, `Retrying after ${retryAfterMs}ms`);
-      setTimeout(() => this._ensureConnected(), retryAfterMs);
-    });
-    companionAppNativePort.onMessage.addListener(ev => {
-      console.log("Received message from native app: ", ev);
-    });
-  }
-
-  _post(msg) {
-    if (!this.companionAppNativePort) {
-      console.warn("Companion app not connected. Dropping message", msg)
-      return
-    }
-    console.log("Posting message to companion app: ", msg);
-    this.companionAppNativePort.postMessage(msg);
-  }
-
-  postWindowAction(appId, action) {
-    this._post({ type: "window-action", appId, action });
-  }
-
-  postPing() {
-    this._post({ type: "ping" });
-  }
-
-  postConfig(config) {
-    this._post({ type: "config", ...config, managerId: appsMgr.managerId });
-  }
-
-  postAppLauch(app) {
-    this._post({ type: "app-launch", appId: app.id, windowTitleFingerprint: app.windowTitleFingerprint });
-  }
-
-  postAppClose(appId) {
-    this._post({ type: "app-close", appId });
-  }
-}
-
-
-const appsMgr = new AppsManager({ apps: [] })
-const companionAppCtl = new CompanionAppCtl()
+const appsMgr = new AppsManager(new CompanionAppCtl('webext.tabapps.companion'), { apps: [] })
 
 function asyncCb(fn) {
   return (...args) => {
@@ -447,8 +437,9 @@ browser.runtime.onStartup.addListener(asyncCb(async () => {
 }))
 
 
-
+let extensionPort = null
 browser.runtime.onConnect.addListener(function (port) {
+  extensionPort = port
   console.debug("Connected extension port", port);
   port.onMessage.addListener(function (msg) {
     console.debug("Recived extension port message", msg);
@@ -470,6 +461,14 @@ browser.runtime.onConnect.addListener(function (port) {
         console.error("Unknown message type", msg['type'])
     }
   });
+  port.onDisconnect.addListener(function () {
+    if (port.error) {
+      console.error("Disconnected extension port", port, port.error);
+    } else {
+      console.debug("Disconnected extension port", port);
+    }
+    extensionPort = null
+  });
 })
 
 
@@ -484,11 +483,20 @@ function dump() {
 }
 
 function getManagedApps() {
-  return Array.from(appsMgr.apps.values())
+  return Array.from(appsMgr.apps.values()).map(app => ({
+    id: app.id,
+    config: app.config,
+    isLaunched: app.isLaunched,
+    windowId: app.windowId,
+    tabId: app.tabId,
+    activeUrl: app.activeUrl,
+    nativeWindow: app.nativeWindow,
+    windowTitleFingerprint: app.windowTitleFingerprint,
+
+  }))
 }
 
 
-// @ts-ignore
 getConfig().then(async config => {
   console.log("Initial config load", config)
   await appsMgr.updateConfig(config)

@@ -9,7 +9,7 @@ function uiBoostrap() {
 
     Alpine.store('managedApps')
     port.onMessage.addListener(function (msg) {
-        console.log("port.onMessage", msg)
+        console.debug("port.onMessage", msg)
         if (msg.type == "return" && msg.method == "getManagedApps") {
             Alpine.store('managedApps', msg.data)
         }
@@ -22,11 +22,7 @@ function uiBoostrap() {
             } catch (e) {
                 console.error(e)
             }
-        },
-        async getManagedApps() {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            return browser.runtime.getBackgroundPage().asyncCb()
-        },
+        }
     }))
 }
 

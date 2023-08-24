@@ -68,27 +68,32 @@ class AppState:
         self.systray_icon = None
 
     def add_to_systray(self):
-        def as_callback(fn):
+        def _callbackify(fn):
             def _wrapped(*args):
                 logger.debug(f"[{self.id}] @ {args=}")
                 fn(self)
 
             return _wrapped
 
+        @_callbackify
         def handle_show_app(app):
             window_ctl.restore_app_window(app.window)
 
+        @_callbackify
         def handle_hide_app(app):
             window_ctl.minimize_app_window(app.window)
 
+        @_callbackify
         def handle_exit(app):
             window_ctl.close_app_window(app.window)
             app.dispose()
 
+        @_callbackify
         def handle_dump(app):
             print(f"\n{app=}", file=sys.stderr, flush=True)
             window_ctl.dump(app.window)
 
+        @_callbackify
         def toggle_window_visibilty(app):
             if window_ctl.is_app_window_minimized(app.window):
                 handle_show_app(app)
@@ -96,18 +101,18 @@ class AppState:
                 handle_hide_app(app)
 
         menu_items = [
-            (f"Show {self.label}", as_callback(handle_show_app)),
-            (f"Minimize", as_callback(handle_hide_app)),
-            ("Dump", as_callback(handle_dump)),
+            (f"Show {self.label}", handle_show_app),
+            (f"Minimize", handle_hide_app),
+            ("Dump", handle_dump),
             "SEPARATOR",
-            ("Exit", as_callback(handle_exit)),
+            ("Exit", handle_exit),
         ]
         tray_icon = SystrayIcon(
             id=self.id,
             icon=self.icon_file,
             title=self.label or self.id,
             menu_items=menu_items,
-            on_activate=as_callback(toggle_window_visibilty),
+            on_activate=_callbackify(toggle_window_visibilty),
         )
         self.systray_icon = tray_icon
 
@@ -139,14 +144,14 @@ def do_refresh_app(app_id, title_fingerprint):
         logger.debug(f"[{app_id}] No app window found for {title_fingerprint=} {app=}")
         app.dispose()
         return
-    if app.window:
-        if app.window == w:
-            logger.debug(f"[{app_id}] Nothing to do. App window unchanged:")
-            return
-        logger.warning(f"[{app_id}] App window changed without noticing: {app.window=} => {w=}")
-    else:
-        logger.debug(f"[{app_id}] New app window found: {w=} {w.title=}")
     try:
+        if app.window:
+            if app.window == w:
+                logger.debug(f"[{app_id}] Nothing to do. App window unchanged:")
+                return
+            logger.warning(f"[{app_id}] App window changed without noticing: {app.window=} => {w=}")
+        else:
+            logger.debug(f"[{app_id}] New app window found: {w=} {w.title=}")
         window_ctl.init_window(w)
         app.window = w
         app.add_to_systray()
@@ -154,6 +159,10 @@ def do_refresh_app(app_id, title_fingerprint):
         logger.exception("Error while init_window()")
         with contextlib.suppress(Exception):
             app.dispose()
+    else:
+        native_messaging.post(
+            {"type": "window-state", "appId": app_id, "nativeWindowId": w.id, "state": "managed"}
+        )
 
 
 def do_window_action(app_id, action):
