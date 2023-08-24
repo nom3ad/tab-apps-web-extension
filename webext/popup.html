@@ -11,7 +11,15 @@
             padding: 10px;
             width: 30em;
         }
-
+        @media (prefers-color-scheme: dark) {
+            body, input,button {
+                background: #23212a;
+                color: #fff;
+            }
+            input[disabled] {
+                color: #aaa;
+            }
+        }
         .actions {
             display: flex;
             flex-direction: row;
@@ -64,7 +72,7 @@
                     </label>
                     <details>
                         <summary>info</summary>
-                        <pre style="overflow: auto;width: 25em; max-height: 15em;" x-text="JSON.stringify(app, null, 2)"></pre>
+                        <pre style="overflow: auto;width: 28em; max-height: 20em;" x-text="JSON.stringify(app, null, 1)"></pre>
                     </details>
                     <!-- <div class="actions">
                         <button @click="openApp(app)">Show</button>

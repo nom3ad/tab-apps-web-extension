@@ -10,6 +10,16 @@
     <script src="./options.js"></script>
     <script defer src="./vendor/alpine.js"></script>
     <style>
+        @media (prefers-color-scheme: dark) {
+            body, input,button {
+                background: #23212a;
+                color: #fff;
+            }
+            input[disabled] {
+                color: #aaa;
+            }
+        }
+
         body {
             padding: 1rem;
             margin: auto;
@@ -20,7 +30,7 @@
             display: flex;
             flex-direction: column;
         }
-        
+
         .app-item-entry {
             padding: 0.5rem .5rem 0 0.5rem;
             border: 1px solid #ccc;
@@ -72,23 +82,25 @@
                 <div class="app-item-entry">
                     <div class="property-input" x-id="[app.id]">
                         <label :for="$id(app.id)">Id</label>
-                        <input :id="$id(app.id)" type="text" x-model="app.id" placeholder="Id" :disabled="app._unsaved!==true">
+                        <input :id="$id(app.id)" type="text" x-model="app.id" placeholder="Id"
+                            :disabled="app._unsaved!==true">
                     </div>
                     <div class="property-input" x-id="[app.id]">
                         <label :for="$id(app.id)">Label</label>
-                        <input :id="$id(app.id)" type="text" x-model="app.label" placeholder="Label">
+                        <input :id="$id(app.id)" type="text" x-model="app.label" placeholder="name of the application">
                     </div>
-                    <div class="property-input x-id="[app.id]">
+                    <div class="property-input x-id=" [app.id]">
                         <label :for="$id(app.id)">URL match regex</label>
-                        <input :id="$id(app.id)" type="text" x-model="app.match" placeholder="regex pattern to match url">
+                        <input :id="$id(app.id)" type="text" x-model="app.match"
+                            placeholder="regex pattern to match url">
                     </div>
                     <div class="property-input" x-id="[app.id]">
                         <label :for="$id(app.id)">Icon URL</label>
-                        <input :id="$id(app.id)" type="text" x-model="app.icon" placeholder="Icon">
+                        <input :id="$id(app.id)" type="text" x-model="app.icon" placeholder="icon to render on system tray">
                     </div>
                     <div class="property-input" x-id="[app.id]">
                         <label :for="$id(app.id)">Home URL</label>
-                        <input :id="$id(app.id)" type="text" x-model="app.url" placeholder="Application Url">
+                        <input :id="$id(app.id)" type="text" x-model="app.url" placeholder="application landing page URL">
                     </div>
                     <div class="property-input" x-id="[app.id]">
                         <label :for="$id(app.id)">Autostart</label>
