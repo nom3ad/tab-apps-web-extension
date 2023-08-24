@@ -129,10 +129,10 @@ def remove_temp_icon_files():
 atexit.register(remove_temp_icon_files)
 
 
-def refresh_app(app_id, title_fingerprint):
-    logger.debug(f"[{app_id}] refresh_app() called")
+def do_refresh_app(app_id, title_fingerprint):
+    logger.debug(f"[{app_id}] do_refresh_app() called")
     if not (app := APPS.get(app_id)):
-        logger.warning(f"[{app_id}] refresh_app() missing app config for {app_id=}")
+        logger.warning(f"[{app_id}] do_refresh_app() missing app config for {app_id=}")
         return
     w = window_ctl.find_app_window(title_fingerprint)
     if not w:
@@ -154,6 +154,22 @@ def refresh_app(app_id, title_fingerprint):
         logger.exception("Error while init_window()")
         with contextlib.suppress(Exception):
             app.dispose()
+
+
+def do_window_action(app_id, action):
+    logger.debug(f"[{app_id}] do_window_action() called")
+    if not (app := APPS.get(app_id)):
+        logger.warning(f"[{app_id}] do_window_action() missing app config for {app_id=}")
+        return
+    if not app.window:
+        logger.warning(f"[{app_id}] do_window_action() missing window for {app_id=}")
+        return
+    if action == "iconify":
+        window_ctl.minimize_app_window(app.window)
+    if action == "restore":
+        window_ctl.restore_app_window(app.window)
+    if action == "dump":
+        window_ctl.dump(app.window)
 
 
 def get_icon_file_from_url(app_id, url):
@@ -201,13 +217,17 @@ def on_native_message(msg):
         if type == "app-launch":
             app_id: str = msg["appId"]
             window_title_fingerprint = msg["windowTitleFingerprint"]
-            refresh_app(app_id, window_title_fingerprint)
+            do_refresh_app(app_id, window_title_fingerprint)
         if type == "app-close":
             app_id: str = msg["appId"]
             app = APPS.get(app_id)
             logger.info(f"[{app_id}] App was closed: disposing {app=}")
             if app:
                 app.dispose()
+        if type == "window-action":
+            app_id: str = msg["appId"]
+            action = msg["action"]
+            do_window_action(app_id, action)
     except Exception:
         logger.exception("Error while processing native message")
 

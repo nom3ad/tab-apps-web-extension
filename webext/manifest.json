@@ -10,8 +10,12 @@
       "id": "tabapps@webext"
     }
   },
+  "content_security_policy": "script-src 'self' 'unsafe-eval'",
   "background": {
-      "scripts": ["background.js"]
+      "scripts": ["common.js", "background.js"]
+  },
+  "options_ui":{
+    "page": "options.html"
   },
   "browser_action": {
     "browser_style": true,
@@ -25,6 +29,7 @@
     "tabs",
     "webNavigation",
     "scripting",
+    "storage",
     "nativeMessaging"
   ]
 }

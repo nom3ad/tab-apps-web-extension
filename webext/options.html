@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset='utf-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <title>Options</title>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <script src="./common.js"></script>
+    <script src="./options.js"></script>
+    <script defer src="./vendor/alpine.js"></script>
+    <style>
+        body {
+            padding: 1rem;
+            margin: auto;
+        }
+
+        .app-list-container {
+            width: 45em;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .app-item-entry {
+            padding: 0.5rem .5rem 0 0.5rem;
+            border: 1px solid #ccc;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .app-item-entry .property-input {
+            display: flex;
+            flex-direction: row;
+            margin-bottom: 0.5rem;
+        }
+
+        .app-item-entry .property-input label {
+            width: 10rem
+        }
+
+        .app-item-entry .property-input input[type="text"] {
+            flex: 1;
+        }
+
+        .app-item-entry .app-item-actions {
+            border-top: 1px solid #eee;
+            padding: 0.5rem;
+            display: flex;
+            flex-direction: row;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 1em;
+        }
+
+        .error-label {
+            color: red;
+        }
+
+        .success-label {
+            color: green;
+        }
+    </style>
+</head>
+
+<body x-init="uiBoostrap()">
+    <form x-data="configForm" @submit.prevent="handleSubmit()">
+        <h4>Apps</h4>
+        <div class="app-list-container">
+            <template x-for="(app, idx) in $store.config?.apps">
+                <div class="app-item-entry">
+                    <div class="property-input" x-id="[app.id]">
+                        <label :for="$id(app.id)">Id</label>
+                        <input :id="$id(app.id)" type="text" x-model="app.id" placeholder="Id" :disabled="app._unsaved!==true">
+                    </div>
+                    <div class="property-input" x-id="[app.id]">
+                        <label :for="$id(app.id)">Label</label>
+                        <input :id="$id(app.id)" type="text" x-model="app.label" placeholder="Label">
+                    </div>
+                    <div class="property-input x-id="[app.id]">
+                        <label :for="$id(app.id)">URL match regex</label>
+                        <input :id="$id(app.id)" type="text" x-model="app.match" placeholder="regex pattern to match url">
+                    </div>
+                    <div class="property-input" x-id="[app.id]">
+                        <label :for="$id(app.id)">Icon URL</label>
+                        <input :id="$id(app.id)" type="text" x-model="app.icon" placeholder="Icon">
+                    </div>
+                    <div class="property-input" x-id="[app.id]">
+                        <label :for="$id(app.id)">Home URL</label>
+                        <input :id="$id(app.id)" type="text" x-model="app.url" placeholder="Application Url">
+                    </div>
+                    <div class="property-input" x-id="[app.id]">
+                        <label :for="$id(app.id)">Autostart</label>
+                        <input :id="$id(app.id)" type="checkbox" x-model="app.autostart">
+                    </div>
+                    <div class="app-item-actions">
+                        <span x-id="[app.id]">
+                            <label :for="$id(app.id)">Enabled</label>
+                            <input :id="$id(app.id)" type="checkbox" x-model="app.enabled">
+                        </span>
+                        <button class="delete-btn" @click.prevent="deleteAppItem(app)">Delete</button>
+                    </div>
+                </div>
+            </template>
+        </div>
+        <button @click.prevent="addAppItem()">+ New App</button>
+        <hr>
+        <div style="display: block; float: right;">
+            <label class="error-label" x-show="errorMsg" x-text="errorMsg"></label>
+            <label class="success-label" x-show="successMsg" x-text="successMsg"></label>
+            <button type="submit">Save</button>
+        </div>
+    </form>
+</body>
+
+</html>

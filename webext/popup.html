@@ -1,14 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tab Apps</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 10px; }
+        body {
+            font-family: Arial, sans-serif;
+            padding: 10px;
+        }
+
+        .actions {
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            gap: 1em;
+        }
+
+        h3 {
+            text-align: center;
+            margin: 0.1em;
+            padding: 0.1em;
+            border-bottom: 2px solid #ccc;
+        }
+
+        .app-item-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5em;
+        }
+
+        .app-item {
+            display: flex;
+            flex-direction: row;
+            align-items: start;
+            gap: 2px;
+            padding: 0.5em;
+            border-bottom: 1px solid #ccc;
+        }
+
+        .actions {
+            display: flex;
+            flex-direction: row;
+        }
     </style>
+    <script defer src="./common.js"></script>
+    <script defer src="./popup.js"></script>
+    <script defer src="./vendor/alpine.js"></script>
 </head>
-<body>
-    <h2>Tab Apps</h2>
+
+<body x-init="uiBoostrap()">
+    <h3>Tab Apps</h3>
+    <div class="app-item-container">
+        <template x-data="popup" x-for="app in $store.managedApps">
+            <div class="app-item">
+                <img x-bind:src="app._cfg.icon" alt="icon" width="16" height="16">
+                <b>
+                    <span x-text="app._cfg.label"></span>(<span x-text="app.id"></span>)
+                </b>
+            </div>
+    </div>
+    </template>
+    <div class="actions" x-data="popup">
+        <button @click="openConfigOptions()">Options</button>
+    </div>
 </body>
+
 </html>
