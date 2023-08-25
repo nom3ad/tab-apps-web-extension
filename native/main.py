@@ -203,7 +203,7 @@ def get_icon_file_from_url(app_id, url):
 
 def on_native_message(msg):
     if msg is None:  # EOF
-        logger.info("Received EOF from native")
+        logger.info("EOF while reading native message")
         sys.exit(0)
     if isinstance(msg, Exception):
         logger.error("Error while reading native message", exc_info=msg)
@@ -257,7 +257,5 @@ def main():
 
 if __name__ == "__main__":
     started_at = time.time()
-    try:
-        main()
-    finally:
-        logger.info("Exiting after %.2fs", time.time() - started_at)
+    atexit.register(lambda: logger.info("Exiting after %.2fs", time.time() - started_at))
+    main()

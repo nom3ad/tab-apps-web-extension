@@ -4,7 +4,8 @@ set -e
 export LC_ALL=C
 
 if [ -n "$TABAPPS_STDERR_FILE" ]; then
-    exec 2>"$TABAPPS_STDERR_FILE"
+    exec 2>>"$TABAPPS_STDERR_FILE"
+    printf "\n--------------------PID=%s\n" "$$" >&2
     # set -x;id >&2;pwd >&2;echo "$*" >&2;env >&2
 fi
 

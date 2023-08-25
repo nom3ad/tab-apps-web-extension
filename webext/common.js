@@ -122,3 +122,9 @@ class RichPromise extends Promise {
     return (this._settledTime ?? Date.now()) - this._startTime;
   }
 }
+
+const hashCode32 = (s) =>
+  s.split("").reduce((a, b) => {
+    a = (a << 5) - a + b.charCodeAt(0);
+    return a & a;
+  }, 0);

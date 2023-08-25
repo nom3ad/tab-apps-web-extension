@@ -26,11 +26,12 @@
 
         body {
             padding: 1rem;
+            width: 100%;
+            max-width: 50em;
             margin: auto;
         }
 
         .app-list-container {
-            width: 45em;
             display: flex;
             flex-direction: column;
         }
@@ -48,6 +49,7 @@
             display: flex;
             flex-direction: row;
             margin-bottom: 0.5rem;
+            align-items: center;
         }
 
         .app-item-entry .property-input label {
@@ -117,21 +119,21 @@
                         <label :for="$id(app.id)">Autostart</label>
                         <input :id="$id(app.id)" type="checkbox" x-model="app.autostart">
                     </div>
+                    <div class="property-input" x-id="[app.id]" x-show="browserHasContainerSupport">
+                        <label :for="$id(app.id)">Designated container</label>
+                        <select x-model="app.cookieStoreId" :id="$id(app.id)">
+                            <template
+                                x-if=" app.cookieStoreId && !(await listContainerIdenties()).find(cid=>cid.cookieStoreId === app.cookieStoreId)">
+                                <option selected disabled>(unavailable)</option>
+                            </template>
+                            <option value="">(no container)</option>
+                            <template x-for="cid in await listContainerIdenties()" :key="cid.cookieStoreId">
+                                <option :value="cid.cookieStoreId" x-text="`${cid.name}`"
+                                    :selected="cid.cookieStoreId == app.cookieStoreId"></option>
+                            </template>
+                        </select>
+                    </div>
                     <div class="app-item-actions">
-                        <span x-id="[app.id]" style="margin-right: auto;">
-                            <label :for="$id(app.id)">Open in </label>
-                            <select x-model="app.cookieStoreId" :id="$id(app.id)">
-                                <template
-                                    x-if=" app.cookieStoreId && !(await listContainerIdenties()).find(cid=>cid.cookieStoreId === app.cookieStoreId)">
-                                    <option selected disabled>(unavailable)</option>
-                                </template>
-                                <option value="">(no container)</option>
-                                <template x-for="cid in await listContainerIdenties()" :key="cid.cookieStoreId">
-                                    <option :value="cid.cookieStoreId" x-text="`${cid.name}`"
-                                        :selected="cid.cookieStoreId == app.cookieStoreId"></option>
-                                </template>
-                            </select>
-                        </span>
                         <span x-id="[app.id]">
                             <label :for="$id(app.id)">Enabled</label>
                             <input :id="$id(app.id)" type="checkbox" x-model="app.enabled">

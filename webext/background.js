@@ -11,7 +11,7 @@ class CompanionAppCtl extends NativeClientCtl {
   }
 
   postConfig(config) {
-    this.post("config", { ...config, managerId: appsMgr.managerId });
+    this.post("config", { ...config, extensionInstanceUUID: appsMgr._extensionInstanceUUID });
   }
 
   postAppLauch(app) {
@@ -154,6 +154,8 @@ class AppItem {
       // no window yet
       const url = options?.tabId ? undefined : options?.url ?? this._cfg.url;
       const tabId = url ? undefined : options.tabId;
+      const cookieStoreId = options?.cookieStoreId || this._cfg.cookieStoreId || undefined;
+      const container = cookieStoreId ? (await browser.contextualIdentities.get(options.cookieStoreId)).name : "<none>";
       const w = await browser.windows.create({
         tabId,
         url,
@@ -162,10 +164,13 @@ class AppItem {
         type: this._cfg.window?.type ?? "popup",
         width: this._cfg.window?.width ?? 1000,
         height: this._cfg.window?.height ?? 700,
-        cookieStoreId: options.cookieStoreId || undefined,
+        cookieStoreId: cookieStoreId,
       });
       this.$setLaunchState({ windowId: w.id, tabId: w.tabs?.[0]?.id, activeUrl: null });
-      console.info("App window created for %s wId=%s tId=%s", this.id, w.id, w.tabs?.[0]?.id, { app: this, w });
+      console.info("App window created for %s wId=%s tId=%s container=%s", this.id, w.id, w.tabs?.[0]?.id, container, {
+        app: this,
+        w,
+      });
     }
     return this._lauched;
   }
@@ -183,14 +188,11 @@ class AppsManager {
    */
   constructor(companionAppCtl, { apps }) {
     this._companionAppCtl = companionAppCtl;
-    const extensionInstanceUUID = new URL(browser.runtime.getURL("")).host;
-    this.managerId = btoa(extensionInstanceUUID)
-      .replace(/\=\/\+/g, "")
-      .substring(0, 4);
-    console.info("Extension instance uuid: ", extensionInstanceUUID, "AppManagerId: ", this.managerId);
+    this._extensionInstanceUUID = new URL(browser.runtime.getURL("")).host;
+    console.info("Extension instance uuid: ", this._extensionInstanceUUID);
 
     this._apps = new Map(
-      apps?.map((appCfg) => [appCfg.id, new AppItem(appCfg, this._getWindowTitleFingerprintForAppId(appCfg.id))])
+      apps?.map((appCfg) => [appCfg.id, new AppItem(appCfg, this._getWindowTitleFingerprintForAppConfig(appCfg))])
     );
 
     this._companionAppCtl.addEventListener("ping", () => this._companionAppCtl.postPing());
@@ -247,7 +249,7 @@ class AppsManager {
     const remainingAppIds = new Set(this._apps.keys());
     for (const appCfg of config.apps) {
       const appId = appCfg.id;
-      const windowTitleFingerprint = this._getWindowTitleFingerprintForAppId(appId);
+      const windowTitleFingerprint = this._getWindowTitleFingerprintForAppConfig(appCfg);
       const app = this._apps.get(appId);
       if (app) {
         const currentAppTab = await app.getTab();
@@ -282,8 +284,11 @@ class AppsManager {
     await this._reconsile();
   }
 
-  _getWindowTitleFingerprintForAppId(id) {
-    return `<TA#${id}@${this.managerId}>`;
+  _getWindowTitleFingerprintForAppConfig(appCfg) {
+    const hash = btoa(hashCode32(this._extensionInstanceUUID + (appCfg.cookieStoreId ?? "default") + appCfg.id))
+      .replace(/\=\/\+/g, "")
+      .substring(0, 4);
+    return `<TA#${appCfg.id}@${hash}>`;
   }
 
   async launch(appId, options) {
@@ -417,10 +422,10 @@ browser.webNavigation.onBeforeNavigate.addListener(
 
     const cancelSourceNavigation = async () => {
       if (["about:newtab", "about:home", "about:blank"].includes(t.url ?? "")) {
-        console.debug(`[DBG] Closing about:* tab=${t.id} wid=${t.windowId} url=(${t.url})`, t);
+        console.debug(`[DBG] Closing about:* tab=${t.id} wid=${t.windowId} url=${t.url}`, t);
         await browser.tabs.remove(details.tabId);
       } else {
-        console.debug(`Executing window.stop() on  windowId=${t.windowId} tabId=${t.id} url=(${t.url})`, t);
+        console.debug(`Executing window.stop() on  windowId=${t.windowId} tabId=${t.id} url=${t.url}`, t);
         // await browser.tabs.goBack(details.tabId)
         await browser.tabs.executeScript(details.tabId, { code: "window.stop()" });
       }
@@ -438,36 +443,25 @@ browser.webNavigation.onBeforeNavigate.addListener(
       return; // ignore self navigation in app tab
     }
 
-    const toBeLaunchedApp = appsMgr.getApp({ url: details.url });
-    if (toBeLaunchedApp) {
-      // navigation to app url from non-app tab
-      let cookieStoreId = t.cookieStoreId;
-      const configuredCookieStoreId = toBeLaunchedApp.config.cookieStoreId;
-      if (configuredCookieStoreId && configuredCookieStoreId !== t.cookieStoreId) {
-        try {
-          const identity = await browser.contextualIdentities.get(configuredCookieStoreId);
-          console.debug(
-            "[DBG] Using user configured container contextualIdentity (name: %s, cookieStoreId: %s)",
-            identity.name,
-            configuredCookieStoreId,
-            { toBeLaunchedApp, identity }
-          );
-          cookieStoreId = configuredCookieStoreId;
-        } catch (err) {
-          console.error(
-            "contextualIdentity for cookieStoreId: %s not found. Not opening tab app",
-            configuredCookieStoreId,
-            { toBeLaunchedApp, err }
-          );
-          // TODO: show error to user
-          return;
-        }
-      }
-      await Promise.all([
-        cancelSourceNavigation(),
-        appsMgr.launch(toBeLaunchedApp.id, { url: details.url, cookieStoreId }),
-      ]);
+    const appForUrl = appsMgr.getApp({ url: details.url });
+    if (!appForUrl) {
+      return;
     }
+    // navigation to app url from non-app tab
+    if (appForUrl.config.cookieStoreId && appForUrl.config.cookieStoreId !== t.cookieStoreId) {
+      console.debug(
+        "[DBG] App cookieStoreId %s does not match tab cookieStoreId %s. Ignoring navigation to app url: %s",
+        appForUrl.config.cookieStoreId,
+        t.cookieStoreId,
+        details.url,
+        appForUrl
+      );
+      return;
+    }
+    await Promise.all([
+      cancelSourceNavigation(),
+      appsMgr.launch(appForUrl.id, { url: details.url, cookieStoreId: t.cookieStoreId }),
+    ]);
   })
 );
 

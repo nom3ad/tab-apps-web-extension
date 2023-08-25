@@ -27,8 +27,7 @@ function uiBoostrap() {
 
     async listContainerIdenties() {
       try {
-        const identities = browser.contextualIdentities.query({});
-        console.debug("[DBG] listContainerIdenties()", identities);
+        const identities = await browser.contextualIdentities.query({});
         return identities;
       } catch (e) {
         console.error(e);
