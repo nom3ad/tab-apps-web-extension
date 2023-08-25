@@ -51,7 +51,7 @@ class NativeMessaging:
 
     def register_listener(self, cb, register_io_watch):
         def _on_data_ready(*args):
-            logger.debug("Native messgae in_stream ready: %r", args)
+            # logger.debug("NativeMessaging::_on_data_ready() wacther=%r  cb_args=%r", self.io_watcher, args)
             msg = self._process(cb)
             logger.debug("Native message was processed successfully: %r", msg)
 

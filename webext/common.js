@@ -11,7 +11,7 @@ const SAMPLE_APPS = [
 ];
 
 /**
- * @returns {Promise<{apps: Foobar[]}>}
+ * @returns {Promise<{apps: any[]}>}
  */
 async function getConfig() {
   const c = await browser.storage.sync.get(["apps"]);
@@ -37,35 +37,47 @@ async function resetDefault() {
   });
 }
 
-class NativeAppCtl extends EventTarget {
+class NativeClientCtl extends EventTarget {
   constructor(id) {
     super();
     this.id = id;
+    this.connectionAttempt = 0;
     this._ensureConnected();
   }
 
   async _ensureConnected() {
-    let companionAppNativePort = browser.runtime.connectNative(this.id);
-    this.companionAppNativePort = companionAppNativePort;
-    companionAppNativePort.onDisconnect.addListener(() => {
+    this.connectionAttempt++;
+    let nativePort = browser.runtime.connectNative(this.id);
+    this.nativePort = nativePort;
+    nativePort.onDisconnect.addListener(() => {
       const retryAfterMs = 5000;
-      this.companionAppNativePort = null;
-      console.error("Disconnected from native app", companionAppNativePort.error, `Retrying after ${retryAfterMs}ms`);
+      this.nativePort = null;
+      console.error("Disconnected from native port", nativePort.error, `Retrying after ${retryAfterMs}ms`);
       setTimeout(() => this._ensureConnected(), retryAfterMs);
     });
-    companionAppNativePort.onMessage.addListener((msg) => {
-      console.debug("[DBG] Received message from native app: ", msg);
-      this.dispatchEvent(new CustomEvent(msg["type"] ?? "<unknown>", { detail: msg }));
+    nativePort.onMessage.addListener((msg) => {
+      const type = msg["type"] ?? "<unknown>";
+      console.debug("[DBG] Received message from native port %s | type: %s", this.id, type, msg);
+      this.dispatchEvent(new CustomEvent(type, { detail: msg }));
+
+      if (!nativePort.error) {
+        // XXX: not enough to ensure native port is connected
+        this.dispatchEvent(
+          new CustomEvent("<connected>", {
+            detail: { connectionAttempt: this.connectionAttempt, nativePort },
+          })
+        );
+      }
     });
   }
 
   post(type, msg) {
-    if (!this.companionAppNativePort) {
-      console.warn("Companion app not connected. Dropping message type=%s", msg);
+    if (!this.nativePort) {
+      console.warn("Native port %s not connected. Dropping message of type: %s", this.id, type, msg);
       return;
     }
-    console.debug("[DBG] Posting message to companion app: type=%s", type, msg);
-    this.companionAppNativePort.postMessage({ type, ...msg });
+    console.debug("[DBG] Posting message to native port %s | type:%s", this.id, type, msg);
+    this.nativePort.postMessage({ type, ...msg });
   }
 }
 

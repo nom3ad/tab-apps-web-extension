@@ -1,17 +1,18 @@
-import Xlib.display
-import Xlib.X
-import Xlib.xobject
-import Xlib.Xatom
-import Xlib.error
-import Xlib.protocol.event
+import logging
+import re
+import subprocess
+import sys
+import time
+from enum import IntEnum
 from functools import partial
 from typing import Literal
-import logging
-import subprocess
-import re
-import time
-import sys
-from enum import IntEnum
+
+import Xlib.display
+import Xlib.error
+import Xlib.protocol.event
+import Xlib.X
+import Xlib.Xatom
+import Xlib.xobject
 
 # https://github.com/python-xlib/python-xlib
 
@@ -97,7 +98,7 @@ def send_event(window: Xlib.xobject.drawable.Window, data, event_type, event_mas
         client_type=(event_type if isinstance(event_type, int) else display.get_atom(event_type)),
         data=(32, (data)),
     )
-    logger.debug(f"send_event() {display.get_atom_name(event.client_type)} {data=} {window=}")
+    logger.debug(f"x11::send_event() {display.get_atom_name(event.client_type)} {data=} {window=}")
     display.screen().root.send_event(event, event_mask=event_mask)
     display.sync()
 
@@ -170,7 +171,7 @@ class CliUtils:
     @staticmethod
     def xprop(window_id, prop_name):
         args = ["xprop", "-id", f"0x{window_id:x}", prop_name]
-        logger.debug(">>> " + " ".join(args))
+        logger.debug("exec() " + " ".join(args))
         return subprocess.check_output(args).decode("utf-8")
 
     @staticmethod
@@ -189,7 +190,7 @@ class CliUtils:
         window: Xlib.xobject.drawable.Window,
     ):
         args = ["xdotool", action, hex(window.id)]
-        logger.debug(">>> " + " ".join(args))
+        logger.debug("exec() " + " ".join(args))
         subprocess.check_output(args)
 
     window_minimize = partial(xdotool_action, "windowminimize")

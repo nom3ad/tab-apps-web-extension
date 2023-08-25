@@ -47,6 +47,11 @@ class SystrayIcon:
     def show(self):
         self.q_tray_icon.show()
 
+    def dispose(self):
+        self.q_tray_icon.hide()
+        self.q_tray_icon.deleteLater()
+        self.q_tray_icon = None
+
     @classmethod
     def get_loop(cls):
         if not cls._loop:

@@ -1,7 +1,7 @@
 const extensionName = browser.runtime.getManifest().name;
 const companionNativeAppId = "webext.tabapps.companion";
 
-class CompanionAppCtl extends NativeAppCtl {
+class CompanionAppCtl extends NativeClientCtl {
   postWindowAction(appId, action) {
     this.post("window-action", { appId, action });
   }
@@ -189,7 +189,7 @@ class AppsManager {
       .substring(0, 4);
     console.info("Extension instance uuid: ", extensionInstanceUUID, "AppManagerId: ", this.managerId);
 
-    this.apps = new Map(
+    this._apps = new Map(
       apps?.map((appCfg) => [appCfg.id, new AppItem(appCfg, this._getWindowTitleFingerprintForAppId(appCfg.id))])
     );
 
@@ -197,17 +197,30 @@ class AppsManager {
     this._companionAppCtl.addEventListener("ready", () => {});
     this._companionAppCtl.addEventListener("dump", () => {});
 
-    this._companionAppCtl.addEventListener("window-state", (ev) => {
-      //@ts-ignore
-      const app = this.apps.get(ev.detail.appId)?.$setNativeWindowIdState({ nativeWindowId: ev.detail.nativeWindowId });
-    });
+    this._companionAppCtl.addEventListener(
+      "<connected>",
+      /**@param {any} ev*/ (ev) => {
+        if (ev.detail.connectionAttempt > 1) {
+          console.warn("Companion app reconnected, synchronizing state");
+          this._companionAppCtl.postConfig({ apps: this.apps.map((app) => app.config) });
+        }
+        this.apps.forEach((app) => app.isLaunched && this._companionAppCtl.postAppLauch(app));
+      }
+    );
+
+    this._companionAppCtl.addEventListener(
+      "window-state",
+      /**@param {any} ev*/ (ev) => {
+        this._apps.get(ev.detail.appId)?.$setNativeWindowIdState({ nativeWindowId: ev.detail.nativeWindowId });
+      }
+    );
     this._reconsile();
   }
 
   _reconsile() {
-    console.log("[DBG] reconsile()", Array.from(this.apps.values()));
+    console.log("[DBG] reconsile()", this.apps);
     return browser.windows.getAll().then(async (windows) => {
-      for (const app of this.apps.values()) {
+      for (const app of this._apps.values()) {
         const w = windows.find((w) => w.title?.includes(app.windowTitleFingerprint));
         if (w) {
           console.info("Reconsile existing app window for %s", app.id, { app, window: w });
@@ -219,19 +232,23 @@ class AppsManager {
     });
   }
 
-  async updateConfig({ apps }) {
-    console.debug("[DBG] updateConfig()", { apps });
-    apps = apps.filter((app) => {
+  get apps() {
+    return Array.from(this._apps.values());
+  }
+
+  async updateConfig(config) {
+    console.debug("[DBG] updateConfig()", config);
+    config.apps = config.apps.filter((app) => {
       if (!app.enabled) {
         console.log("Config change: app disabled. appId: %s", app.id, { app });
       }
       return app.enabled;
     });
-    const remainingAppIds = new Set(this.apps.keys());
-    for (const appCfg of apps) {
+    const remainingAppIds = new Set(this._apps.keys());
+    for (const appCfg of config.apps) {
       const appId = appCfg.id;
       const windowTitleFingerprint = this._getWindowTitleFingerprintForAppId(appId);
-      const app = this.apps.get(appId);
+      const app = this._apps.get(appId);
       if (app) {
         const currentAppTab = await app.getTab();
         console.log("Config change: existing app updated. appId: %s", appId, {
@@ -252,16 +269,16 @@ class AppsManager {
         remainingAppIds.delete(appId);
       } else {
         console.info("Config update for %s new app added", appId, { appCfg });
-        this.apps.set(appId, new AppItem(appCfg, windowTitleFingerprint));
+        this._apps.set(appId, new AppItem(appCfg, windowTitleFingerprint));
       }
     }
     for (const appId of remainingAppIds) {
       console.info("Config update for %s app was removed", appId);
       this._companionAppCtl.postAppClose(appId);
-      this.apps.delete(appId);
+      this._apps.delete(appId);
     }
 
-    this._companionAppCtl.postConfig({ apps });
+    this._companionAppCtl.postConfig({ apps: config.apps });
     await this._reconsile();
   }
 
@@ -270,7 +287,7 @@ class AppsManager {
   }
 
   async launch(appId, options) {
-    const app = this.apps.get(appId);
+    const app = this._apps.get(appId);
     if (!app) {
       throw new Error(`App not found: ${appId}`);
     }
@@ -286,7 +303,7 @@ class AppsManager {
   }
 
   async unlaunch(appId) {
-    const app = this.apps.get(appId);
+    const app = this._apps.get(appId);
     if (!app) {
       throw new Error(`App not found: ${appId}`);
     }
@@ -306,11 +323,11 @@ class AppsManager {
         this._companionAppCtl.postWindowAction(app.id, "iconify");
       }
     };
-    return Promise.allSettled(Array.from(this.apps.values()).map(_autostart));
+    return Promise.allSettled(Array.from(this._apps.values()).map(_autostart));
   }
 
   isAppWindow(windowId) {
-    for (const app of this.apps.values()) {
+    for (const app of this._apps.values()) {
       if (app.windowId && app.windowId === windowId) {
         return true;
       }
@@ -320,7 +337,7 @@ class AppsManager {
 
   getApp(options) {
     let found = false;
-    for (const app of this.apps.values()) {
+    for (const app of this._apps.values()) {
       if (options?.url) {
         found = app.isUrlMatches(options.url);
       }
@@ -391,8 +408,8 @@ browser.webNavigation.onBeforeNavigate.addListener(
     if (details.frameId !== 0) {
       return; // ignore iframe navigations
     }
-    if (details.url.startsWith("moz-extension://")) {
-      return; // ignore extention navigations
+    if (["about:", "moz-extension:"].includes(new URL(details.url).protocol)) {
+      return; // ignore non web navigations
     }
     console.debug("[DBG] webNavigation.onBeforeNavigate() %s", details.url, { details });
 
@@ -545,7 +562,7 @@ function dump() {
 }
 
 function getManagedApps() {
-  return Array.from(appsMgr.apps.values()).map((app) => ({
+  return appsMgr.apps.map((app) => ({
     id: app.id,
     config: app.config,
     isLaunched: app.isLaunched,
