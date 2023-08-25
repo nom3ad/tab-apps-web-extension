@@ -379,9 +379,9 @@ class AppsManager {
 const appsMgr = new AppsManager(new CompanionAppCtl(companionNativeAppId), { apps: [] });
 
 /**
- * x@template T
- * x@param {T extends unknown[] ? (...args: T)=>Promise: never} fn
- * x@returns {(...args: T extends unknown[] ? T: never)=>void}
+ * @template T
+ * @param {T extends unknown[] ? (...args: T)=>Promise: never} fn
+ * @returns {(...args: T extends unknown[] ? T: never)=>void}
  */
 function asyncCb(fn) {
   return (...args) => {
@@ -425,6 +425,7 @@ async function openInNonAppWindow(urlOrTabId) {
 }
 
 browser.webNavigation.onBeforeNavigate.addListener(
+  //@ts-ignore
   asyncCb(async (details) => {
     if (details.frameId !== 0) {
       return; // ignore iframe navigations
@@ -482,34 +483,45 @@ browser.webNavigation.onBeforeNavigate.addListener(
   })
 );
 
-browser.webNavigation.onCompleted.addListener(
+browser.webNavigation.onCommitted.addListener(
+  //@ts-ignore
   asyncCb(async (details) => {
     if (details.frameId !== 0) {
       return; // ignore iframe navigations
     }
     const app = appsMgr.getApp({ tabId: details.tabId });
     if (!app) {
-      // non-app window
-      return;
+      return; // non-app window
     }
     if (app.isUrlMatches(details.url)) {
       app.activeUrl = details.url;
-
-      console.debug("[DBG] Registering beforeunload listener", details.url);
-      await browser.tabs.executeScript(this.tabId, {
-        code: `
-        console.log('beforeunload listener injected by ${extensionName} extension')
-        window.addEventListener('beforeunload', () => 'bla bla')
-    `,
-      });
     } else {
       if (app.activeUrl) {
-        console.warn("Unexpected url in app tab. Navigate back to last active url", { app, details });
+        console.warn("Unexpected url %s in app tab. Navigate back to last active url", details.url, { app, details });
         await browser.tabs.update(app.tabId, { url: app.activeUrl });
       } else {
-        console.error("Unexpected url in app tab. Last active url is none", { app, details });
+        console.error("Unexpected url %s in app tab. Last active url is none", details.url, { app, details });
       }
     }
+  })
+);
+
+browser.webNavigation.onCompleted.addListener(
+  //@ts-ignore
+  asyncCb(async (details) => {
+    if (details.frameId !== 0) {
+      return; // ignore iframe navigations
+    }
+    if (!appsMgr.getApp({ tabId: details.tabId })?.isUrlMatches(details.url)) {
+      return; // non-app window
+    }
+    console.debug("[DBG] Navigation completed. Registering 'beforeunload' listener", details.url, details);
+    await browser.tabs.executeScript(this.tabId, {
+      code: `
+        console.log('beforeunload listener is injected by ${extensionName} extension')
+        window.addEventListener('beforeunload', (e) => e.preventDefault())
+    `,
+    });
   })
 );
 
@@ -522,12 +534,20 @@ browser.windows.onRemoved.addListener((windowId) => {
   appsMgr.unlaunch(app.id);
 });
 
-browser.runtime.onStartup.addListener(
+browser.runtime.onInstalled.addListener(
   asyncCb(async () => {
-    // open extension config page
+    console.info("Extension installed. Opening options page");
     await browser.runtime.openOptionsPage();
   })
 );
+
+browser.runtime.onSuspend.addListener(() => {
+  console.warn("onSuspend() !!");
+});
+
+browser.runtime.onStartup.addListener(() => {
+  console.info("onStartup()");
+});
 
 let extensionPort = null;
 browser.runtime.onConnect.addListener(function (port) {
