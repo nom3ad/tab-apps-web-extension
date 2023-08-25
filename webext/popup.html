@@ -5,6 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tab Apps</title>
+    <script src="./vendor/browser-polyfill.min.js"></script>
+    <script defer src="./common.js"></script>
+    <script defer src="./popup.js"></script>
+    <script defer src="./vendor/alpine.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -90,9 +94,6 @@
             gap: 0.8em;
         }
     </style>
-    <script defer src="./common.js"></script>
-    <script defer src="./popup.js"></script>
-    <script defer src="./vendor/alpine.js"></script>
 </head>
 
 <body x-init="uiBoostrap()">

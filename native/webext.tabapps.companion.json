@@ -5,5 +5,8 @@
   "path": "path/to/native/exec.sh",
   "allowed_extensions": [
     "tabapps@webext"
+  ],
+  "allowed_origins": [
+    "chrome-extension://gpcplmbofionhhoiabamnpddelbhbdmg/"
   ]
 }
