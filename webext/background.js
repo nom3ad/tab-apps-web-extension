@@ -62,6 +62,9 @@ class AppItem {
 
   set activeUrl(url) {
     if (this._lauched && this.isUrlMatches(url)) {
+      if (this._lauched?.activeUrl instanceof RichPromise) {
+        this._lauched.activeUrl.resolve(url);
+      }
       this._lauched.activeUrl = url;
     } else {
       console.warn("Trying to set activeUrl for app not lauched", { appId: this.id, url });
@@ -69,7 +72,10 @@ class AppItem {
   }
 
   get activeUrl() {
-    return this._lauched?.activeUrl ?? null;
+    if (this._lauched?.activeUrl && typeof this._lauched.activeUrl === "string") {
+      return this._lauched.activeUrl;
+    }
+    return null;
   }
 
   get isLaunched() {
@@ -84,23 +90,20 @@ class AppItem {
     return this.windowId ? await browser.windows.get(this.windowId, { populate: true }) : null;
   }
 
+  async $waitForActiveUrl() {
+    return (await this._lauched?.activeUrl) ?? null;
+  }
+
   $unsetLaunchState() {
     this._lauched = null;
   }
 
-  $setLaunchState(windowId, tabId, activeUrl) {
-    if (!activeUrl.match(this._urlPattern)) {
-      console.warn("setLaunchState() - activeUrl does not match urlPattern", {
-        appid: this.id,
-        activeUrl,
-        urlPattern: this._urlPattern,
-      });
+  $setLaunchState({ windowId, tabId, activeUrl }) {
+    console.debug("[DBG] $setLaunchState() appid=%s", this.id, { windowId, tabId, activeUrl });
+    if (activeUrl && !activeUrl.match(this._urlPattern)) {
+      console.warn("$setLaunchState() appid=%s : %s does not match %s", this.id, activeUrl, this._urlPattern);
     }
-    this._lauched = {
-      tabId,
-      windowId,
-      activeUrl,
-    };
+    this._lauched = { tabId, windowId, activeUrl: activeUrl || new RichPromise(null, 5000) };
   }
 
   $setNativeWindowIdState({ nativeWindowId }) {
@@ -161,16 +164,7 @@ class AppItem {
         height: this._cfg.window?.height ?? 700,
         cookieStoreId: options.cookieStoreId || undefined,
       });
-      this.$setLaunchState(w.id, w.tabs?.[0]?.id, url ?? w.tabs?.[0]?.url);
-      console.info("App window created", {
-        appId: this.id,
-        lauchOptions: options,
-        windowId: this.windowId,
-        tabId: this.tabId,
-        opt: { tabId, url },
-        w,
-        this: this,
-      });
+      this.$setLaunchState({ windowId: w.id, tabId: w.tabs?.[0]?.id, activeUrl: null });
       console.info("App window created for %s wId=%s tId=%s", this.id, w.id, w.tabs?.[0]?.id, { app: this, w });
     }
     return this._lauched;
@@ -276,14 +270,19 @@ class AppsManager {
   }
 
   async launch(appId, options) {
-    const appItem = this.apps.get(appId);
-    if (!appItem) {
+    const app = this.apps.get(appId);
+    if (!app) {
       throw new Error(`App not found: ${appId}`);
     }
-    await appItem.$launch(options);
-    // TODO: implement navigation complete listener to detect when app tab is ready
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    this._companionAppCtl.postAppLauch(appItem);
+    // await new Promise((resolve) => setTimeout(resolve, 3000));
+    await app.$launch(options);
+    try {
+      await app.$waitForActiveUrl();
+    } catch (e) {
+      console.error("App did not load in time", app, e);
+      return;
+    }
+    this._companionAppCtl.postAppLauch(app);
   }
 
   async unlaunch(appId) {

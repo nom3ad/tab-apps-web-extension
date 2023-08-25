@@ -68,3 +68,45 @@ class NativeAppCtl extends EventTarget {
     this.companionAppNativePort.postMessage({ type, ...msg });
   }
 }
+
+class RichPromise extends Promise {
+  constructor(executor, timeoutMs = 0) {
+    let _resolve, _reject;
+    super((resolve, reject) => {
+      _resolve = (value) => {
+        this._settledTime = Date.now();
+        resolve(value);
+      };
+      _reject = (reason) => {
+        this._settledTime = Date.now();
+        reject(reason);
+      };
+      executor?.(_resolve, _reject);
+    });
+    this._startTime = Date.now();
+    if (timeoutMs) {
+      this._timeoutRef = setTimeout(() => _reject(`timeout after ${timeoutMs}ms`), timeoutMs);
+    }
+    this._resolve = _resolve;
+    this._reject = _reject;
+  }
+  resolve(value) {
+    console.info("RichPromise::resolve", this);
+    this._timeoutRef && clearTimeout(this._timeoutRef);
+    this._resolve(value);
+  }
+
+  reject(reason) {
+    console.info("RichPromise::reject", this);
+    this._timeoutRef && clearTimeout(this._timeoutRef);
+    this._reject(reason);
+  }
+
+  isSettled() {
+    return !!this._settledTime;
+  }
+
+  elapsed() {
+    return (this._settledTime ?? Date.now()) - this._startTime;
+  }
+}
