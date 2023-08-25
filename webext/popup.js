@@ -22,5 +22,9 @@ function uiBoostrap() {
         console.error(e);
       }
     },
+
+    async getContainerInfo(containerId) {
+      return await tryGetContainer(containerId);
+    },
   }));
 }

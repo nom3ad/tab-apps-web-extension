@@ -11,20 +11,19 @@
             padding: 10px;
             width: 30em;
         }
+
         @media (prefers-color-scheme: dark) {
-            body, input,button {
+
+            body,
+            input,
+            button {
                 background: #23212a;
                 color: #fff;
             }
+
             input[disabled] {
                 color: #aaa;
             }
-        }
-        .actions {
-            display: flex;
-            flex-direction: row;
-            justify-content: center;
-            gap: 1em;
         }
 
         h3 {
@@ -34,7 +33,7 @@
             border-bottom: 2px solid #ccc;
         }
 
-        .app-item-container {
+        .app-item-list-container {
             display: flex;
             flex-direction: column;
             gap: 0.5em;
@@ -42,17 +41,53 @@
 
         .app-item {
             display: flex;
+            flex-direction: column;
+            gap: 0.5em;
+            padding: 0.5em;
+            border-bottom: 1px solid #ccc;
+            margin-bottom: 0.5em;
+        }
+
+        .app-item .app-item-panel {
+            display: flex;
             flex-direction: row;
             align-items: start;
             gap: 2px;
-            padding: 0.5em;
-            border-bottom: 1px solid #ccc;
         }
 
-        .actions {
+        .app-item .app-item-panel .status {
+            flex: 1;
+        }
+
+        .app-item .app-item-panel .container-info {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            border: 1px solid;
+            font-size: 0.8rem;
+            border-radius: 8px;
+            padding: 2px 6px;
+            gap: 2px;
+        }
+
+        .app-item .app-item-panel .container-info .icon {
+            height: 1em;
+            width: 1em;
+            margin-right: 0.5em;
+        }
+
+        .app-item .actions {
             display: flex;
             flex-direction: row;
             justify-content: left;
+            gap: 0.8em;
+        }
+
+        footer {
+            display: flex;
+            flex-direction: row;
+            justify-content: right;
+            gap: 0.8em;
         }
     </style>
     <script defer src="./common.js"></script>
@@ -62,26 +97,41 @@
 
 <body x-init="uiBoostrap()">
     <h3>Tab Apps</h3>
-    <div class="app-item-container">
+    <div class="app-item-list-container">
         <template x-data="popup" x-for="app in $store.managedApps" :key="app.id">
             <article class="app-item">
-                <img x-bind:src="app.config.icon || './icon.png'" width="16" height="16">
-                <div>
-                    <label>
-                        <b x-text="app.config.label"></b>(<small><b>id:</b><i x-text="app.id"></i></small>)
-                    </label>
-                    <details>
-                        <summary>info</summary>
-                        <pre style="overflow: auto;width: 28em; max-height: 20em;" x-text="JSON.stringify(app, null, 1)"></pre>
-                    </details>
-                    <!-- <div class="actions">
-                        <button @click="openApp(app)">Show</button>
-                        <button @click="closeApp(app)">Close</button>
-                    </div> -->
+                <div class="app-item-panel">
+                    <img class="icon" x-bind:src="app.config.icon || './icon.png'" width="16" height="16">
+                    <div class="status">
+                        <label>
+                            <b x-text="app.config.label"></b>(<small><b>id:</b><i x-text="app.id"></i></small>)
+                        </label>
+                        <label x-show="app.isLaunched" style="color: #0e0;"><small><em>Launched</em></small></label>
+                    </div>
+                    <template x-if="app.isLaunched">
+                        <div class="container-info" x-data="{container: null} "
+                            x-init="container = await getContainerInfo(app.cookieStoreId)"
+                            :style="{color: container?.colorCode}">
+                            <i class="icon"
+                                :style="`background-color:${container?.colorCode}; mask: url(${container?.iconUrl}) no-repeat center / contain;`"></i>
+                            <label x-text="container?.name ?? 'default'"></label>
+                        </div>
+                    </template>
                 </div>
+                <div class="actions">
+                    <button x-show="!app.isLaunched" @click="launchApp(app)">Launch</button>
+                    <button x-show="app.isLaunched" @click="focusApp(app)">Show</button>
+                    <button x-show="app.isLaunched" @click="closeApp(app)">Close</button>
+                </div>
+                <details class="app-item-details">
+                    <summary>info</summary>
+                    <pre style="overflow: auto;width: 28em; max-height: 20em;">
+                        <code x-text="JSON.stringify({...app, container: await getContainerInfo(app.cookieStoreId) }, null, 1)"></code>
+                    </pre>
+                </details>
             </article>
+        </template>
     </div>
-    </template>
     <footer class="actions" x-data="popup">
         <button @click="openConfigOptions()">Options</button>
     </footer>

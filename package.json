@@ -4,11 +4,13 @@
   "description": "Web Extension to handle tabs as apps",
   "main": "background.js",
   "scripts": {
-    "start": "TABAPPS_STDERR_FILE=$PWD/tmp/companion.stderr.log TABAPPS_KEEP_TEMP_ICON_FILES=true  web-ext run --devtools --firefox-profile ./tmp/ff-profile --profile-create-if-missing --keep-profile-changes",
+    "start": "concurrently -i -n firefox,native  npm:start:firefox npm:native:tail",
+    "start:firefox": "TABAPPS_STDERR_FILE=$PWD/tmp/companion.stderr.log TABAPPS_KEEP_TEMP_ICON_FILES=true  web-ext run --devtools --firefox-profile ./tmp/ff-profile --profile-create-if-missing --keep-profile-changes",
     "build": "web-ext build --overwrite-dest",
     "sign": "eval $(cat .env) && web-ext sign --api-key=$AMO_API_KEY --api-secret=$AMO_API_SECRET",
     "lint": "web=ext lint",
     "native:dev": "TABAPPS_KEEP_TEMP_ICON_FILES=true ./native/exec-dev.py",
+    "native:tail": "touch $PWD/tmp/companion.stderr.log && tail -f -n0 $PWD/tmp/companion.stderr.log",
     "native:cp": "sed s!path/to/native!$PWD/native!g ./native/webext.tabapps.companion.json > ~/.mozilla/native-messaging-hosts/webext.tabapps.companion.json",
     "install:firefox": "set -x; firefox web-ext-artifacts/*$(jq -r '.version' webext/manifest.json).xpi"
   },
@@ -18,5 +20,8 @@
     "@types/alpinejs": "3.7.2",
     "@types/firefox-webext-browser": "111.0.1",
     "web-ext": "7.6.2"
+  },
+  "devDependencies": {
+    "concurrently": "8.2.1"
   }
 }

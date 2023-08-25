@@ -60,6 +60,10 @@ class AppItem {
     return this._lauched?.tabId ?? null;
   }
 
+  get cookieStoreId() {
+    return this._lauched?.cookieStoreId ?? null;
+  }
+
   set activeUrl(url) {
     if (this._lauched && this.isUrlMatches(url)) {
       if (this._lauched?.activeUrl instanceof RichPromise) {
@@ -90,6 +94,10 @@ class AppItem {
     return this.windowId ? await browser.windows.get(this.windowId, { populate: true }) : null;
   }
 
+  async getContainer() {
+    return await tryGetContainer(this.cookieStoreId);
+  }
+
   async $waitForActiveUrl() {
     return (await this._lauched?.activeUrl) ?? null;
   }
@@ -98,12 +106,12 @@ class AppItem {
     this._lauched = null;
   }
 
-  $setLaunchState({ windowId, tabId, activeUrl }) {
-    console.debug("[DBG] $setLaunchState() appid=%s", this.id, { windowId, tabId, activeUrl });
+  async $setLaunchState({ windowId, tabId, cookieStoreId, activeUrl }) {
+    console.debug("[DBG] AppItem::$setLaunchState() appid=%s", this.id, { windowId, tabId, activeUrl });
     if (activeUrl && !activeUrl.match(this._urlPattern)) {
-      console.warn("$setLaunchState() appid=%s : %s does not match %s", this.id, activeUrl, this._urlPattern);
+      console.warn("AppItem::$setLaunchState() appid=%s : %s does not match %s", this.id, activeUrl, this._urlPattern);
     }
-    this._lauched = { tabId, windowId, activeUrl: activeUrl || new RichPromise(null, 5000) };
+    this._lauched = { tabId, windowId, activeUrl: activeUrl || new RichPromise(null, 5000), cookieStoreId };
   }
 
   $setNativeWindowIdState({ nativeWindowId }) {
@@ -146,16 +154,21 @@ class AppItem {
         });
         await browser.tabs.move(options.tabId, { windowId: this.windowId, index: -1 });
         const t = await browser.tabs.get(options.tabId);
-        this.$setLaunchState({ windowId: this.windowId, tabId: options.tabId, activeUrl: t.url });
+        await this.$setLaunchState({
+          windowId: this.windowId,
+          tabId: options.tabId,
+          activeUrl: t.url,
+          cookieStoreId: t.cookieStoreId,
+        });
         // remove extra tabs from the window
         await this._removeExtraTabs();
       }
     } else {
       // no window yet
       const url = options?.tabId ? undefined : options?.url ?? this._cfg.url;
-      const tabId = url ? undefined : options.tabId;
+      let tabId = url ? undefined : options.tabId;
       const cookieStoreId = options?.cookieStoreId || this._cfg.cookieStoreId || undefined;
-      const container = cookieStoreId ? (await browser.contextualIdentities.get(options.cookieStoreId)).name : "<none>";
+      const container = await tryGetContainer(cookieStoreId);
       const w = await browser.windows.create({
         tabId,
         url,
@@ -166,10 +179,13 @@ class AppItem {
         height: this._cfg.window?.height ?? 700,
         cookieStoreId: cookieStoreId,
       });
-      this.$setLaunchState({ windowId: w.id, tabId: w.tabs?.[0]?.id, activeUrl: null });
-      console.info("App window created for %s wId=%s tId=%s container=%s", this.id, w.id, w.tabs?.[0]?.id, container, {
+      tabId = w.tabs?.[0].id;
+      await this.$setLaunchState({ windowId: w.id, tabId, activeUrl: null, cookieStoreId });
+      console.info(`App window created aid=${this.id} wId=${w.id} tId${tabId} container=${container?.name}`, {
         app: this,
         w,
+        cookieStoreId,
+        container,
       });
     }
     return this._lauched;
@@ -220,14 +236,14 @@ class AppsManager {
   }
 
   _reconsile() {
-    console.log("[DBG] reconsile()", this.apps);
+    console.log("[DBG] AppManager::reconsile()", this.apps);
     return browser.windows.getAll().then(async (windows) => {
       for (const app of this._apps.values()) {
         const w = windows.find((w) => w.title?.includes(app.windowTitleFingerprint));
         if (w) {
           console.info("Reconsile existing app window for %s", app.id, { app, window: w });
           const t = (await browser.tabs.query({ windowId: w.id, active: true }))[0];
-          app.$setLaunchState({ windowId: w.id, tabId: t.id, activeUrl: t.url });
+          await app.$setLaunchState({ windowId: w.id, tabId: t.id, activeUrl: t.url, cookieStoreId: t.cookieStoreId });
           this._companionAppCtl.postAppLauch(app);
         }
       }
@@ -239,10 +255,10 @@ class AppsManager {
   }
 
   async updateConfig(config) {
-    console.debug("[DBG] updateConfig()", config);
+    console.debug("[DBG] AppManager::updateConfig()", config);
     config.apps = config.apps.filter((app) => {
       if (!app.enabled) {
-        console.log("Config change: app disabled. appId: %s", app.id, { app });
+        console.info("Config change: app disabled. appId: %s", app.id, { app });
       }
       return app.enabled;
     });
@@ -253,7 +269,7 @@ class AppsManager {
       const app = this._apps.get(appId);
       if (app) {
         const currentAppTab = await app.getTab();
-        console.log("Config change: existing app updated. appId: %s", appId, {
+        console.info("Config change: existing app updated. appId: %s", appId, {
           app,
           appCfg,
           currentAppTab,
@@ -421,7 +437,7 @@ browser.webNavigation.onBeforeNavigate.addListener(
     const t = await browser.tabs.get(details.tabId);
 
     const cancelSourceNavigation = async () => {
-      if (["about:newtab", "about:home", "about:blank"].includes(t.url ?? "")) {
+      if (["about:blank"].includes(t.url ?? "")) {
         console.debug(`[DBG] Closing about:* tab=${t.id} wid=${t.windowId} url=${t.url}`, t);
         await browser.tabs.remove(details.tabId);
       } else {
@@ -448,11 +464,12 @@ browser.webNavigation.onBeforeNavigate.addListener(
       return;
     }
     // navigation to app url from non-app tab
-    if (appForUrl.config.cookieStoreId && appForUrl.config.cookieStoreId !== t.cookieStoreId) {
+    const configuredCookieStoreId = appForUrl.config.cookieStoreId;
+    if (configuredCookieStoreId && configuredCookieStoreId !== t.cookieStoreId) {
       console.debug(
-        "[DBG] App cookieStoreId %s does not match tab cookieStoreId %s. Ignoring navigation to app url: %s",
-        appForUrl.config.cookieStoreId,
-        t.cookieStoreId,
+        "[DBG Ignoring navigation to app url. Container configured = %s | current = %s | url=%s",
+        (await tryGetContainer(configuredCookieStoreId))?.name ?? `<unavailble #${configuredCookieStoreId}>`,
+        (await tryGetContainer(t.cookieStoreId))?.name ?? `<none>`,
         details.url,
         appForUrl
       );
@@ -564,6 +581,7 @@ function getManagedApps() {
     tabId: app.tabId,
     activeUrl: app.activeUrl,
     nativeWindow: app.nativeWindow,
+    cookieStoreId: app.cookieStoreId,
     windowTitleFingerprint: app.windowTitleFingerprint,
   }));
 }

@@ -15,7 +15,7 @@ const SAMPLE_APPS = [
  */
 async function getConfig() {
   const c = await browser.storage.sync.get(["apps"]);
-  console.debug("[DBG] get(config)", c);
+  // console.debug("[DBG] get(config)", c);
   if (!c.apps?.length) {
     console.log("No apps defined. Using default sample apps");
     c.apps = SAMPLE_APPS;
@@ -37,6 +37,17 @@ async function resetDefault() {
   });
 }
 
+async function tryGetContainer(cookieStoreId) {
+  if (!cookieStoreId || cookieStoreId === "firefox-default" || cookieStoreId === "firefox-private") {
+    return null;
+  }
+  try {
+    return await browser.contextualIdentities.get(cookieStoreId);
+  } catch (e) {
+    return null;
+  }
+}
+
 class NativeClientCtl extends EventTarget {
   constructor(id) {
     super();
@@ -52,7 +63,7 @@ class NativeClientCtl extends EventTarget {
     nativePort.onDisconnect.addListener(() => {
       const retryAfterMs = 5000;
       this.nativePort = null;
-      console.error("Disconnected from native port", nativePort.error, `Retrying after ${retryAfterMs}ms`);
+      console.error("Disconnected from native port. error=", nativePort.error, `Retrying after ${retryAfterMs}ms`);
       setTimeout(() => this._ensureConnected(), retryAfterMs);
     });
     nativePort.onMessage.addListener((msg) => {
