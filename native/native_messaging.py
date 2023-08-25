@@ -1,10 +1,10 @@
-import sys
-import struct
 import json
 import logging
-from typing import BinaryIO
 import os
+import struct
+import sys
 from functools import partial
+from typing import BinaryIO
 
 logger = logging.getLogger(__name__)
 

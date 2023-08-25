@@ -1,20 +1,19 @@
 #!/usr/bin/env python
 
-import logging
-
-import json
-import os
-import threading
 import atexit
-import hashlib
-from typing import Any
-import pathlib
-import tempfile
-from dataclasses import dataclass
-from urllib.parse import urlparse
-import sys
 import contextlib
+import hashlib
 import importlib
+import json
+import logging
+import os
+import pathlib
+import sys
+import tempfile
+import threading
+from dataclasses import dataclass
+from typing import Any
+from urllib.parse import urlparse
 from urllib.request import urlopen
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(message)s")
@@ -22,9 +21,8 @@ logger = logging.getLogger("main")
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from x11_window_control import X11WindowControl
 from native_messaging import NativeMessaging
-
+from x11_window_control import X11WindowControl
 
 systray_providers = ["qt", "gtk"]
 

@@ -1,10 +1,12 @@
 lockfileVersion: 5.4
 
 specifiers:
+  '@types/alpinejs': 3.7.2
   '@types/firefox-webext-browser': 111.0.1
   web-ext: 7.6.2
 
 dependencies:
+  '@types/alpinejs': 3.7.2
   '@types/firefox-webext-browser': 111.0.1
   web-ext: 7.6.2
 
@@ -190,6 +192,12 @@ packages:
       defer-to-connect: 2.0.1
     dev: false
 
+  /@types/alpinejs/3.7.2:
+    resolution: {integrity: sha512-M/PAVysvGxOlhifP/6XmO8bj5HW9w+Ygr03PdryM3tCb1KuQEaAAvVcyeZc5T75PbjH3dCzy/M/w/nJEE0FTSg==}
+    dependencies:
+      '@vue/reactivity': 3.3.4
+    dev: false
+
   /@types/firefox-webext-browser/111.0.1:
     resolution: {integrity: sha512-mmHWdQTCT68X0hh0URrsIyWhJeFzZHaiprj6nni/CmsAmqYq27T0eZyu1ePeKJ/zuDD3wqtTzm5TwRFAso+oPw==}
     dev: false
@@ -210,6 +218,16 @@ packages:
     resolution: {integrity: sha512-Cn6WYCm0tXv8p6k+A8PvbDG763EDpBoTzHdA+Q/MF6H3sapGjCm9NzoaJncJS9tUKSuCoDs9XHxYYsQDgxR6kw==}
     dependencies:
       '@types/node': 20.4.10
+    dev: false
+
+  /@vue/reactivity/3.3.4:
+    resolution: {integrity: sha512-kLTDLwd0B1jG08NBF3R5rqULtv/f8x3rOFByTDz4J53ttIQEDmALqKqXY0J+XQeN0aV2FBxY8nJDf88yvOPAqQ==}
+    dependencies:
+      '@vue/shared': 3.3.4
+    dev: false
+
+  /@vue/shared/3.3.4:
+    resolution: {integrity: sha512-7OjdcV8vQ74eiz1TZLzZP4JwqM5fA94K6yntPS5Z25r9HDuGNzaGdgvwKYq6S+MxwF0TFRwe50fIR/MYnakdkQ==}
     dev: false
 
   /abort-controller/3.0.0:

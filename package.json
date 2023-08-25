@@ -4,7 +4,7 @@
   "description": "Web Extension to handle tabs as apps",
   "main": "background.js",
   "scripts": {
-    "native:cp": "sed s!path/to/native!$PWD/native!g ./native/webext.tabapps.companion.json > ~/.mozilla/native-messaging-hosts/webext.tabapps.companion.json" ,
+    "native:cp": "sed s!path/to/native!$PWD/native!g ./native/webext.tabapps.companion.json > ~/.mozilla/native-messaging-hosts/webext.tabapps.companion.json",
     "start": "TABAPPS_STDERR_FILE=$PWD/tmp/companion.stderr.log TABAPPS_KEEP_TEMP_ICON_FILES=true  web-ext run --devtools --firefox-profile ./tmp/ff-profile --profile-create-if-missing --keep-profile-changes",
     "build": "web-ext build --overwrite-dest",
     "sign": "eval $(cat .env) && web-ext sign --api-key=$AMO_API_KEY --api-secret=$AMO_API_SECRET",
@@ -13,6 +13,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/alpinejs": "3.7.2",
     "@types/firefox-webext-browser": "111.0.1",
     "web-ext": "7.6.2"
   }

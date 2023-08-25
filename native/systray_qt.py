@@ -1,8 +1,9 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QSystemTrayIcon, QMenu, QAction
-from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import QSocketNotifier
 from functools import partial
+
+from PyQt5.QtCore import QSocketNotifier
+from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import QAction, QApplication, QMenu, QSystemTrayIcon, QWidget
 
 
 class SystrayIcon:

@@ -1,26 +1,23 @@
 #!/usr/bin/env python
-import sys
+import json
+import os
+import signal
+import socket
 import struct
 import subprocess
-import socket
-import os
-import json
-import signal
-from functools import cache
-import json
+import sys
 import threading
+from functools import cache
+
 log = lambda msg: print(f"**** {msg}", file=sys.stderr, flush=True)
 
-s1,s2 = socket.socketpair()
+s1, s2 = socket.socketpair()
 
-os.environ["LC_ALL"]="C"
+os.environ["LC_ALL"] = "C"
 os.chdir(os.path.dirname(__file__))
 
-proc = subprocess.Popen(
-    args=["python", "./main.py"],
-    stdin=s2,
-    stdout=s2
-)
+proc = subprocess.Popen(args=["python", "./main.py"], stdin=s2, stdout=s2)
+
 
 # handle keyboard interrupt
 @cache
@@ -34,7 +31,7 @@ def die():
     log("Exiting wrapper")
     sys.exit(proc.wait())
 
-    
+
 signal.signal(signal.SIGINT, lambda *_: log("SIGNINT()") + die())
 signal.signal(signal.SIGTERM, lambda *_: log("SIGTERM()") + die())
 signal.signal(signal.SIGQUIT, lambda *_: log("SIGQUIT()") + die())
@@ -53,7 +50,7 @@ def send(msg):
 def proc_read_loop():
     f = s1.makefile()
     try:
-        while True: 
+        while True:
             length_data = f.read(4)
             if not length_data:
                 raise EOFError
@@ -62,7 +59,8 @@ def proc_read_loop():
             log(f"<<< {json.loads(message_data)}")
     finally:
         die()
-        
+
+
 def proc_write_loop():
     while data := sys.stdin.readline():
         try:
@@ -90,15 +88,16 @@ def proc_write_loop():
             log(f"Failed to parse input: {e=} {data=}")
 
 
-
-log("""
+log(
+    """
 HELP
 ------
     config: id1 id2 ...
     launch: id fingerprint
     close: id
     ping
-    """)
+    """
+)
 
 send({"type": "ping"})
 send({"type": "config", "apps": [{"id": "test", "label": "Example"}]})
