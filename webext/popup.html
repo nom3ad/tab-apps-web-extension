@@ -63,7 +63,7 @@
 <body x-init="uiBoostrap()">
     <h3>Tab Apps</h3>
     <div class="app-item-container">
-        <template x-data="popup" x-for="app in $store.managedApps">
+        <template x-data="popup" x-for="app in $store.managedApps" :key="app.id">
             <article class="app-item">
                 <img x-bind:src="app.config.icon || './icon.png'" width="16" height="16">
                 <div>

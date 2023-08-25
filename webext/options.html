@@ -11,10 +11,14 @@
     <script defer src="./vendor/alpine.js"></script>
     <style>
         @media (prefers-color-scheme: dark) {
-            body, input,button {
+
+            body,
+            input,
+            button {
                 background: #23212a;
                 color: #fff;
             }
+
             input[disabled] {
                 color: #aaa;
             }
@@ -71,6 +75,11 @@
         .success-label {
             color: green;
         }
+
+        footer {
+            display: flex;
+            flex-direction: row;
+        }
     </style>
 </head>
 
@@ -78,7 +87,7 @@
     <form x-data="configForm" @submit.prevent="handleSubmit()">
         <h4>Apps</h4>
         <div class="app-list-container">
-            <template x-for="(app, idx) in $store.config?.apps">
+            <template x-for="(app, idx) in $store.config?.apps" :key="app.id">
                 <div class="app-item-entry">
                     <div class="property-input" x-id="[app.id]">
                         <label :for="$id(app.id)">Id</label>
@@ -96,17 +105,33 @@
                     </div>
                     <div class="property-input" x-id="[app.id]">
                         <label :for="$id(app.id)">Icon URL</label>
-                        <input :id="$id(app.id)" type="text" x-model="app.icon" placeholder="icon to render on system tray">
+                        <input :id="$id(app.id)" type="text" x-model="app.icon"
+                            placeholder="icon to render on system tray">
                     </div>
                     <div class="property-input" x-id="[app.id]">
                         <label :for="$id(app.id)">Home URL</label>
-                        <input :id="$id(app.id)" type="text" x-model="app.url" placeholder="application landing page URL">
+                        <input :id="$id(app.id)" type="text" x-model="app.url"
+                            placeholder="application landing page URL">
                     </div>
                     <div class="property-input" x-id="[app.id]">
                         <label :for="$id(app.id)">Autostart</label>
                         <input :id="$id(app.id)" type="checkbox" x-model="app.autostart">
                     </div>
                     <div class="app-item-actions">
+                        <span x-id="[app.id]" style="margin-right: auto;">
+                            <label :for="$id(app.id)">Open in </label>
+                            <select x-model="app.cookieStoreId" :id="$id(app.id)">
+                                <template
+                                    x-if=" app.cookieStoreId && !(await listContainerIdenties()).find(cid=>cid.cookieStoreId === app.cookieStoreId)">
+                                    <option selected disabled>(unavailable)</option>
+                                </template>
+                                <option value="">(no container)</option>
+                                <template x-for="cid in await listContainerIdenties()" :key="cid.cookieStoreId">
+                                    <option :value="cid.cookieStoreId" x-text="`${cid.name}`"
+                                        :selected="cid.cookieStoreId == app.cookieStoreId"></option>
+                                </template>
+                            </select>
+                        </span>
                         <span x-id="[app.id]">
                             <label :for="$id(app.id)">Enabled</label>
                             <input :id="$id(app.id)" type="checkbox" x-model="app.enabled">
@@ -118,10 +143,16 @@
         </div>
         <button @click.prevent="addAppItem()">+ New App</button>
         <hr>
-        <footer style="display: block; float: right;">
-            <label class="error-label" x-show="errorMsg" x-text="errorMsg"></label>
-            <label class="success-label" x-show="successMsg" x-text="successMsg"></label>
-            <button type="submit">Save</button>
+        <footer>
+            <details style="flex: 1">
+                <summary>config.json</summary>
+                <pre style="overflow: auto;max-height: 20em;" x-text="JSON.stringify($store.config, null, 1)"></pre>
+            </details>
+            <div>
+                <label class="error-label" x-show="errorMsg" x-text="errorMsg"></label>
+                <label class="success-label" x-show="successMsg" x-text="successMsg"></label>
+                <button type="submit">Save</button>
+            </div>
         </footer>
     </form>
 </body>

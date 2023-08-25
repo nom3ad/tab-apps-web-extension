@@ -1,6 +1,6 @@
 
 //@ts-check
-
+/// <reference path="./common.js" />
 
 class CompanionAppCtl extends NativeAppCtl {
 
@@ -127,7 +127,7 @@ class AppItem {
   }
 
   async $launch(options) {
-    console.debug("AppItem.launch()", { appId: this.id, options })
+    console.debug("[DBG] AppItem::launch()", { appId: this.id, options })
     if (this.windowId) {
       // existing window and tab
       await browser.windows.update(this.windowId, { focused: true })
@@ -150,6 +150,7 @@ class AppItem {
         type: this._cfg.window?.type ?? 'popup',
         width: this._cfg.window?.width ?? 1000,
         height: this._cfg.window?.height ?? 700,
+        cookieStoreId: options.cookieStoreId || undefined,
       })
       this.$setLaunchState(w.id, w.tabs?.[0]?.id, url ?? w.tabs?.[0]?.url)
       console.info("App window created", { appId: this.id, lauchOptions: options, windowId: this.windowId, tabId: this.tabId, opt: { tabId, url }, w, this: this })
@@ -206,7 +207,6 @@ class AppsManager {
       }
     })
   }
-
 
   async updateConfig({ apps }) {
     console.log("updateConfig()", { apps })
@@ -275,11 +275,11 @@ class AppsManager {
     for (const appItem of this.apps.values()) {
       if (appItem.isAutostart) {
         if (appItem.isLaunched) {
-          console.debug("App already launched. Autostart skipping", { appItem })
+          console.debug("[DBG] App already launched. Autostart skipping", { appItem })
           continue
         }
         console.log("Autostarting app", { appItem })
-        await this.launch(appItem.id)
+        await this.launch(appItem.id, { cookieStoreId: appItem.config.cookieStoreId })
         this._companionAppCtl.postWindowAction(appItem.id, 'iconify')
       }
     }
@@ -366,12 +366,13 @@ browser.webNavigation.onBeforeNavigate.addListener(asyncCb(async details => {
   if (details.url.startsWith('moz-extension://')) {
     return; // ignore extention navigations
   }
-  console.debug('[DBG] webNavigation.onBeforeNavigate()', { details })
+  console.debug("[DBG] webNavigation.onBeforeNavigate() %s", details.url, { details })
+
+  const t = await browser.tabs.get(details.tabId)
 
   const cancelSourceNavigation = async () => {
-    // console.debug("Canceling navigation", { details })
+    // console.debug("[DBG] Canceling navigation", { details })
     // browser.history.getVisits()
-    const t = await browser.tabs.get(details.tabId)
     if (['about:newtab', 'about:home', 'about:blank'].includes(t.url ?? '')) {
       await browser.tabs.remove(details.tabId)
     }
@@ -394,9 +395,21 @@ browser.webNavigation.onBeforeNavigate.addListener(asyncCb(async details => {
 
   const toBeLaunchedAppItem = appsMgr.getApp({ url: details.url })
   if (toBeLaunchedAppItem) { // navigation to app url from non-app tab
-    await Promise.all([cancelSourceNavigation(), appsMgr.launch(toBeLaunchedAppItem.id, { url: details.url })])
+    let cookieStoreId = t.cookieStoreId;
+    const configuredCookieStoreId = toBeLaunchedAppItem.config.cookieStoreId
+    if (configuredCookieStoreId && configuredCookieStoreId !== t.cookieStoreId) {
+      try {
+        const identity = await browser.contextualIdentities.get(configuredCookieStoreId)
+        console.debug("[DBG] Using user configured container contextualIdentity (name: %s, cookieStoreId: %s)", identity.name, configuredCookieStoreId, { toBeLaunchedAppItem, identity })
+        cookieStoreId = configuredCookieStoreId
+      } catch (err) {
+        console.error("contextualIdentity for cookieStoreId: %s not found. Not opening tab app", configuredCookieStoreId, { toBeLaunchedAppItem, err })
+        // TODO: show error to user
+        return
+      }
+    }
+    await Promise.all([cancelSourceNavigation(), appsMgr.launch(toBeLaunchedAppItem.id, { url: details.url, cookieStoreId })])
   }
-
 }));
 
 browser.webNavigation.onCompleted.addListener(asyncCb(async details => {
@@ -404,13 +417,13 @@ browser.webNavigation.onCompleted.addListener(asyncCb(async details => {
     return;  // ignore iframe navigations
   }
   const appItem = appsMgr.getApp({ tabId: details.tabId })
-  if (!appItem) {
+  if (!appItem) { // non-app window
     return
   }
   if (appItem.isUrlMatches(details.url)) {
     appItem.activeUrl = details.url
 
-    console.debug("Registering beforeunload listener", details.url)
+    console.debug("[DBG] Registering beforeunload listener", details.url)
     await browser.tabs.executeScript(this.tabId, {
       code: `
         console.log('beforeunload listener injected by ${browser.runtime.getManifest().name} extension')
@@ -440,9 +453,9 @@ browser.runtime.onStartup.addListener(asyncCb(async () => {
 let extensionPort = null
 browser.runtime.onConnect.addListener(function (port) {
   extensionPort = port
-  console.debug("Connected extension port", port);
+  console.debug("[DBG] Connected extension port", port);
   port.onMessage.addListener(function (msg) {
-    console.debug("Recived extension port message", msg);
+    console.debug("[DBG] Recived extension port message", msg);
     switch (msg['type']) {
       case 'call':
         switch (msg['method']) {
@@ -465,7 +478,7 @@ browser.runtime.onConnect.addListener(function (port) {
     if (port.error) {
       console.error("Disconnected extension port", port, port.error);
     } else {
-      console.debug("Disconnected extension port", port);
+      console.debug("[DBG] Disconnected extension port", port);
     }
     extensionPort = null
   });

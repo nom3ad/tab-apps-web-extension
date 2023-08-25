@@ -1,9 +1,12 @@
 {
   "manifest_version": 2,
   "name": "Tab Apps",
-  "version": "0.2.0",
-  "description": "This extension allows you to handle tab as a windowed app",
+  "version": "0.2.1",
+  "description": "This extension allows you to handle tab as a windowed app. Tabs handle by this extension would appear as an icon in the system tray",
   "homepage_url": "https://github.com/nom3ad/tab-as-app-web-extension",
+  "icons":{
+    "48": "icon.png"
+  },
   "browser_specific_settings": {
     "gecko": {
       "strict_min_version": "58.0a1",
@@ -15,7 +18,8 @@
       "scripts": ["common.js", "background.js"]
   },
   "options_ui":{
-    "page": "options.html"
+    "page": "options.html",
+    "browser_style": true
   },
   "browser_action": {
     "browser_style": true,
@@ -30,6 +34,8 @@
     "webNavigation",
     "scripting",
     "storage",
-    "nativeMessaging"
+    "nativeMessaging",
+    "cookies",
+    "contextualIdentities"
   ]
 }
