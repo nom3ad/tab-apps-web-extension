@@ -1,5 +1,5 @@
-//@ts-check
-/// <reference path="./common.js" />
+const extensionName = browser.runtime.getManifest().name;
+const companionNativeAppId = "webext.tabapps.companion";
 
 class CompanionAppCtl extends NativeAppCtl {
   postWindowAction(appId, action) {
@@ -143,7 +143,7 @@ class AppItem {
         });
         await browser.tabs.move(options.tabId, { windowId: this.windowId, index: -1 });
         const t = await browser.tabs.get(options.tabId);
-        this.$setLaunchState(this.windowId, options.tabId, t.url);
+        this.$setLaunchState({ windowId: this.windowId, tabId: options.tabId, activeUrl: t.url });
         // remove extra tabs from the window
         await this._removeExtraTabs();
       }
@@ -171,13 +171,14 @@ class AppItem {
         w,
         this: this,
       });
+      console.info("App window created for %s wId=%s tId=%s", this.id, w.id, w.tabs?.[0]?.id, { app: this, w });
     }
     return this._lauched;
   }
 }
 
 browser.storage.sync.onChanged.addListener((changes) => {
-  console.log("storage.sync.onChanged", changes);
+  console.debug("[DBG] storage.sync.onChanged", changes);
   getConfig().then((config) => appsMgr.updateConfig(config));
 });
 
@@ -191,7 +192,7 @@ class AppsManager {
     const extensionInstanceUUID = new URL(browser.runtime.getURL("")).host;
     this.managerId = btoa(extensionInstanceUUID)
       .replace(/\=\/\+/g, "")
-      .substring(0, 8);
+      .substring(0, 4);
     console.info("Extension instance uuid: ", extensionInstanceUUID, "AppManagerId: ", this.managerId);
 
     this.apps = new Map(
@@ -210,15 +211,14 @@ class AppsManager {
   }
 
   _reconsile() {
-    console.log("reconsile()", this.apps);
+    console.log("[DBG] reconsile()", Array.from(this.apps.values()));
     return browser.windows.getAll().then(async (windows) => {
       for (const app of this.apps.values()) {
-        console.log(app);
         const w = windows.find((w) => w.title?.includes(app.windowTitleFingerprint));
         if (w) {
-          console.info("Reconsile existing app window", { app, window: w });
+          console.info("Reconsile existing app window for %s", app.id, { app, window: w });
           const t = (await browser.tabs.query({ windowId: w.id, active: true }))[0];
-          app.$setLaunchState(w.id, t.id, t.url);
+          app.$setLaunchState({ windowId: w.id, tabId: t.id, activeUrl: t.url });
           this._companionAppCtl.postAppLauch(app);
         }
       }
@@ -226,7 +226,7 @@ class AppsManager {
   }
 
   async updateConfig({ apps }) {
-    console.log("updateConfig()", { apps });
+    console.debug("[DBG] updateConfig()", { apps });
     apps = apps.filter((app) => {
       if (!app.enabled) {
         console.log("Config change: app disabled. appId: %s", app.id, { app });
@@ -237,33 +237,32 @@ class AppsManager {
     for (const appCfg of apps) {
       const appId = appCfg.id;
       const windowTitleFingerprint = this._getWindowTitleFingerprintForAppId(appId);
-      const appItem = this.apps.get(appId);
-      if (appItem) {
-        const currentAppTab = await appItem.getTab();
+      const app = this.apps.get(appId);
+      if (app) {
+        const currentAppTab = await app.getTab();
         console.log("Config change: existing app updated. appId: %s", appId, {
-          appItem,
+          app,
           appCfg,
           currentAppTab,
         });
-        appItem.update(appCfg, windowTitleFingerprint);
-        if (currentAppTab && !appItem.isUrlMatches(currentAppTab.url)) {
+        app.update(appCfg, windowTitleFingerprint);
+        if (currentAppTab && !app.isUrlMatches(currentAppTab.url)) {
           console.info(
-            "Config change: appId: %s | Current app tab url does not match new config. Releasing app tab",
-            appId,
-            { appItem, currentAppTab }
+            `Config update for ${appId} | Current app tab url does not match new config. Releasing app tab`,
+            { app, currentAppTab }
           );
-          appItem.$unsetLaunchState();
-          this._companionAppCtl.postAppClose(appItem.id);
+          app.$unsetLaunchState();
+          this._companionAppCtl.postAppClose(app.id);
           openInNonAppWindow(currentAppTab.id);
         }
         remainingAppIds.delete(appId);
       } else {
-        console.log("Config change: new app added. appId: %s", appId, { appCfg });
+        console.info("Config update for %s new app added", appId, { appCfg });
         this.apps.set(appId, new AppItem(appCfg, windowTitleFingerprint));
       }
     }
     for (const appId of remainingAppIds) {
-      console.info("Config change: app was removed. appId: %s", appId);
+      console.info("Config update for %s app was removed", appId);
       this._companionAppCtl.postAppClose(appId);
       this.apps.delete(appId);
     }
@@ -288,31 +287,32 @@ class AppsManager {
   }
 
   async unlaunch(appId) {
-    const appItem = this.apps.get(appId);
-    if (!appItem) {
+    const app = this.apps.get(appId);
+    if (!app) {
       throw new Error(`App not found: ${appId}`);
     }
-    appItem.$unsetLaunchState();
-    this._companionAppCtl.postAppClose(appItem.id);
+    app.$unsetLaunchState();
+    this._companionAppCtl.postAppClose(app.id);
   }
 
   async launchAllAutostartable() {
-    for (const appItem of this.apps.values()) {
-      if (appItem.isAutostart) {
-        if (appItem.isLaunched) {
-          console.debug("[DBG] App already launched. Autostart skipping", { appItem });
-          continue;
+    const _autostart = async (app) => {
+      if (app.isAutostart) {
+        if (app.isLaunched) {
+          console.debug("[DBG] App already launched. Autostart skipping", { app });
+          return;
         }
-        console.log("Autostarting app", { appItem });
-        await this.launch(appItem.id, { cookieStoreId: appItem.config.cookieStoreId });
-        this._companionAppCtl.postWindowAction(appItem.id, "iconify");
+        console.info("Autostarting app", { app });
+        await this.launch(app.id, { cookieStoreId: app.config.cookieStoreId });
+        this._companionAppCtl.postWindowAction(app.id, "iconify");
       }
-    }
+    };
+    return Promise.allSettled(Array.from(this.apps.values()).map(_autostart));
   }
 
   isAppWindow(windowId) {
-    for (const appItem of this.apps.values()) {
-      if (appItem.windowId && appItem.windowId === windowId) {
+    for (const app of this.apps.values()) {
+      if (app.windowId && app.windowId === windowId) {
         return true;
       }
     }
@@ -321,26 +321,31 @@ class AppsManager {
 
   getApp(options) {
     let found = false;
-    for (const appItem of this.apps.values()) {
+    for (const app of this.apps.values()) {
       if (options?.url) {
-        found = appItem.isUrlMatches(options.url);
+        found = app.isUrlMatches(options.url);
       }
       if (options?.tabId) {
-        found = appItem.tabId === options.tabId;
+        found = app.tabId === options.tabId;
       }
       if (options?.windowId) {
-        found = appItem.windowId === options.windowId;
+        found = app.windowId === options.windowId;
       }
       if (found) {
-        return appItem;
+        return app;
       }
     }
     return null;
   }
 }
 
-const appsMgr = new AppsManager(new CompanionAppCtl("webext.tabapps.companion"), { apps: [] });
+const appsMgr = new AppsManager(new CompanionAppCtl(companionNativeAppId), { apps: [] });
 
+/**
+ * x@template T
+ * x@param {T extends unknown[] ? (...args: T)=>Promise: never} fn
+ * x@returns {(...args: T extends unknown[] ? T: never)=>void}
+ */
 function asyncCb(fn) {
   return (...args) => {
     fn(...args).catch((err) => console.error(err));
@@ -354,7 +359,7 @@ async function openInNonAppWindow(urlOrTabId) {
       continue;
     }
     if (!appsMgr.isAppWindow(w.id)) {
-      console.log("Found non-app window", { w });
+      console.debug("[DBG] Found non-app window", { w });
       nonAppWindowId = w.id;
     }
   }
@@ -395,9 +400,8 @@ browser.webNavigation.onBeforeNavigate.addListener(
     const t = await browser.tabs.get(details.tabId);
 
     const cancelSourceNavigation = async () => {
-      // console.debug("[DBG] Canceling navigation", { details })
-      // browser.history.getVisits()
       if (["about:newtab", "about:home", "about:blank"].includes(t.url ?? "")) {
+        console.debug(`[DBG] Closing about:* tab=${t.id} wid=${t.windowId} url=(${t.url})`, t);
         await browser.tabs.remove(details.tabId);
       } else {
         console.debug(`Executing window.stop() on  windowId=${t.windowId} tabId=${t.id} url=(${t.url})`, t);
@@ -406,26 +410,23 @@ browser.webNavigation.onBeforeNavigate.addListener(
       }
     };
 
-    const launchedAppItem = appsMgr.getApp({ tabId: details.tabId });
-    if (launchedAppItem) {
+    const launchedApp = appsMgr.getApp({ tabId: details.tabId });
+    if (launchedApp) {
       // navigation in app tab
-      if (!launchedAppItem.isUrlMatches(details.url)) {
+      if (!launchedApp.isUrlMatches(details.url)) {
         // navigation url does not belong to app
-        const appTab = await launchedAppItem.getTab();
-        console.info("Extenal navigation candidate detected", details, {
-          lauchedAppItem: launchedAppItem,
-          appTab,
-        });
+        const appTab = await launchedApp.getTab();
+        console.info("Extenal navigation candidate detected", details, { launchedApp, appTab });
         await Promise.all([cancelSourceNavigation(), openInNonAppWindow(details.url)]);
       }
       return; // ignore self navigation in app tab
     }
 
-    const toBeLaunchedAppItem = appsMgr.getApp({ url: details.url });
-    if (toBeLaunchedAppItem) {
+    const toBeLaunchedApp = appsMgr.getApp({ url: details.url });
+    if (toBeLaunchedApp) {
       // navigation to app url from non-app tab
       let cookieStoreId = t.cookieStoreId;
-      const configuredCookieStoreId = toBeLaunchedAppItem.config.cookieStoreId;
+      const configuredCookieStoreId = toBeLaunchedApp.config.cookieStoreId;
       if (configuredCookieStoreId && configuredCookieStoreId !== t.cookieStoreId) {
         try {
           const identity = await browser.contextualIdentities.get(configuredCookieStoreId);
@@ -433,14 +434,14 @@ browser.webNavigation.onBeforeNavigate.addListener(
             "[DBG] Using user configured container contextualIdentity (name: %s, cookieStoreId: %s)",
             identity.name,
             configuredCookieStoreId,
-            { toBeLaunchedAppItem, identity }
+            { toBeLaunchedApp, identity }
           );
           cookieStoreId = configuredCookieStoreId;
         } catch (err) {
           console.error(
             "contextualIdentity for cookieStoreId: %s not found. Not opening tab app",
             configuredCookieStoreId,
-            { toBeLaunchedAppItem, err }
+            { toBeLaunchedApp, err }
           );
           // TODO: show error to user
           return;
@@ -448,7 +449,7 @@ browser.webNavigation.onBeforeNavigate.addListener(
       }
       await Promise.all([
         cancelSourceNavigation(),
-        appsMgr.launch(toBeLaunchedAppItem.id, { url: details.url, cookieStoreId }),
+        appsMgr.launch(toBeLaunchedApp.id, { url: details.url, cookieStoreId }),
       ]);
     }
   })
@@ -459,38 +460,39 @@ browser.webNavigation.onCompleted.addListener(
     if (details.frameId !== 0) {
       return; // ignore iframe navigations
     }
-    const appItem = appsMgr.getApp({ tabId: details.tabId });
-    if (!appItem) {
+    const app = appsMgr.getApp({ tabId: details.tabId });
+    if (!app) {
       // non-app window
       return;
     }
-    if (appItem.isUrlMatches(details.url)) {
-      appItem.activeUrl = details.url;
+    if (app.isUrlMatches(details.url)) {
+      app.activeUrl = details.url;
 
       console.debug("[DBG] Registering beforeunload listener", details.url);
       await browser.tabs.executeScript(this.tabId, {
         code: `
-        console.log('beforeunload listener injected by ${browser.runtime.getManifest().name} extension')
+        console.log('beforeunload listener injected by ${extensionName} extension')
         window.addEventListener('beforeunload', () => 'bla bla')
     `,
       });
     } else {
-      console.warn("Unexpected url in app tab after navigation completed. Navigate back to last active url", {
-        appItem,
-        details,
-      });
-      await browser.tabs.update(appItem.tabId, { url: appItem.activeUrl });
+      if (app.activeUrl) {
+        console.warn("Unexpected url in app tab. Navigate back to last active url", { app, details });
+        await browser.tabs.update(app.tabId, { url: app.activeUrl });
+      } else {
+        console.error("Unexpected url in app tab. Last active url is none", { app, details });
+      }
     }
   })
 );
 
 browser.windows.onRemoved.addListener((windowId) => {
-  const appItem = appsMgr.getApp({ windowId: windowId });
-  if (!appItem) {
+  const app = appsMgr.getApp({ windowId: windowId });
+  if (!app) {
     return;
   }
-  console.info("App window closed", { appId: appItem.id, windowId });
-  appsMgr.unlaunch(appItem.id);
+  console.info("App window closed", { appId: app.id, windowId });
+  appsMgr.unlaunch(app.id);
 });
 
 browser.runtime.onStartup.addListener(
@@ -557,7 +559,7 @@ function getManagedApps() {
 }
 
 getConfig().then(async (config) => {
-  console.log("Initial config load", config);
+  console.info("Initial config load", config);
   await appsMgr.updateConfig(config);
   await appsMgr.launchAllAutostartable();
 });

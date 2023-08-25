@@ -1,6 +1,3 @@
-//@ts-check
-/// <reference path="./common.js" />
-
 function uiBoostrap() {
   console.debug("[DBG] uiBoostrap()");
 
@@ -9,7 +6,6 @@ function uiBoostrap() {
   });
 
   port.postMessage({ type: "call", method: "getManagedApps" });
-
   Alpine.store("managedApps");
   port.onMessage.addListener((msg) => {
     console.debug("[DBG] port.onMessage", msg);

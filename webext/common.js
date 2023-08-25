@@ -1,10 +1,3 @@
-//@ts-check
-
-/**
- * @type  { import("alpinejs").Alpine }
- **/
-const Alpine = window["Alpine"];
-
 const SAMPLE_APPS = [
   {
     id: "example",
@@ -18,7 +11,7 @@ const SAMPLE_APPS = [
 ];
 
 /**
- * @returns {Promise<{apps: any[]}>}
+ * @returns {Promise<{apps: Foobar[]}>}
  */
 async function getConfig() {
   const c = await browser.storage.sync.get(["apps"]);
