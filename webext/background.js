@@ -1,39 +1,48 @@
-const extensionName = browser.runtime.getManifest().name;
-const companionNativeAppId = "webext.tabapps.companion";
+const COMPANION_NATIVE_APP_ID = "webext.tabapps.companion";
 
+console.info("Extension name=%s id=%s instance=%s", extensionName(), extensionId(), extensionInstanceId());
 class CompanionAppCtl extends NativeClientCtl {
   postWindowAction(appId, action) {
     this.post("window-action", { appId, action });
   }
 
-  postPing() {
+  async postPing() {
     this.post("ping");
   }
 
-  postConfig(config) {
-    this.post("config", { ...config, extensionInstanceUUID: appsMgr._extensionInstanceUUID });
+  async postConfig(config) {
+    this.post("config", { ...config, extensionInstanceId: extensionInstanceId() });
   }
 
-  postAppLauch(app) {
-    this.post("app-launch", { appId: app.id, windowTitleFingerprint: app.windowTitleFingerprint });
+  /**
+   * @param {AppItem} app
+   */
+  async postAppLauch(app) {
+    this.post("app-launch", {
+      appId: app.id,
+      windowTitleFingerprint: app.getWindowTitleFingerprint() ?? (await app.getTab())?.title, // TODO: remove
+      windowSelector: {
+        titleFingerPrint: app.getWindowTitleFingerprint(),
+        title: (await app.getTab())?.title,
+      },
+    });
   }
 
-  postAppClose(appId) {
+  async postAppClose(appId) {
     this.post("app-close", { appId });
   }
 }
 
 class AppItem {
-  constructor(cfg, windowTitleFingerprint) {
+  constructor(cfg) {
     this.id = cfg.id;
-    this.update(cfg, windowTitleFingerprint);
+    this.update(cfg);
     this.$unsetLaunchState();
   }
 
-  update(cfg, windowTitleFingerprint) {
+  update(cfg) {
     this._cfg = cfg;
     this._urlPattern = new RegExp(cfg.match);
-    this._windowTitleFingerprint = windowTitleFingerprint;
   }
 
   get config() {
@@ -52,16 +61,18 @@ class AppItem {
     return this._lauched?.nativeWindow ?? null;
   }
 
-  get windowTitleFingerprint() {
-    return this._windowTitleFingerprint;
+  getWindowTitleFingerprint() {
+    if (!isFirefox()) {
+      return null;
+    }
+    const hash = btoa(hashCode32(extensionInstanceId() + (this.config.cookieStoreId ?? "default") + this.id))
+      .replace(/\=\/\+/g, "")
+      .substring(0, 4);
+    return `<TA#${this.id}@${hash}>`;
   }
 
   get tabId() {
     return this._lauched?.tabId ?? null;
-  }
-
-  get cookieStoreId() {
-    return this._lauched?.cookieStoreId ?? null;
   }
 
   set activeUrl(url) {
@@ -95,7 +106,7 @@ class AppItem {
   }
 
   async getContainer() {
-    return await tryGetContainer(this.cookieStoreId);
+    return await tryGetContainer(this._lauched?.cookieStoreId);
   }
 
   async $waitForActiveUrl() {
@@ -172,12 +183,14 @@ class AppItem {
       const w = await browser.windows.create({
         tabId,
         url,
-        titlePreface: this.windowTitleFingerprint + " ",
         focused: true,
         type: this._cfg.window?.type ?? "popup",
         width: this._cfg.window?.width ?? 1000,
         height: this._cfg.window?.height ?? 700,
-        cookieStoreId: cookieStoreId,
+        ...(isFirefox() && {
+          titlePreface: `${this.getWindowTitleFingerprint()} `,
+          cookieStoreId: cookieStoreId,
+        }),
       });
       tabId = w.tabs?.[0].id;
       await this.$setLaunchState({ windowId: w.id, tabId, activeUrl: null, cookieStoreId });
@@ -204,12 +217,8 @@ class AppsManager {
    */
   constructor(companionAppCtl, { apps }) {
     this._companionAppCtl = companionAppCtl;
-    this._extensionInstanceUUID = new URL(browser.runtime.getURL("")).host;
-    console.info("Extension instance uuid: ", this._extensionInstanceUUID);
 
-    this._apps = new Map(
-      apps?.map((appCfg) => [appCfg.id, new AppItem(appCfg, this._getWindowTitleFingerprintForAppConfig(appCfg))])
-    );
+    this._apps = new Map(apps?.map((appCfg) => [appCfg.id, new AppItem(appCfg)]));
 
     this._companionAppCtl.addEventListener("ping", () => this._companionAppCtl.postPing());
     this._companionAppCtl.addEventListener("ready", () => {});
@@ -236,15 +245,25 @@ class AppsManager {
   }
 
   _reconsile() {
-    console.log("[DBG] AppManager::reconsile()", this.apps);
-    return browser.windows.getAll().then(async (windows) => {
+    console.debug("[DBG] AppManager::reconsile()", this.apps);
+    return browser.windows.getAll({ populate: true }).then(async (windows) => {
       for (const app of this._apps.values()) {
-        const w = windows.find((w) => w.title?.includes(app.windowTitleFingerprint));
-        if (w) {
+        if (!app.isLaunched) {
+          continue;
+        }
+        for (const w of windows) {
+          const tf = app.getWindowTitleFingerprint();
+          if (tf && !w.title?.includes(tf)) {
+            continue;
+          }
+          if (!tf && !(w.type === "popup" && app.isUrlMatches(w.tabs?.[0]?.url))) {
+            continue;
+          }
           console.info("Reconsile existing app window for %s", app.id, { app, window: w });
           const t = (await browser.tabs.query({ windowId: w.id, active: true }))[0];
           await app.$setLaunchState({ windowId: w.id, tabId: t.id, activeUrl: t.url, cookieStoreId: t.cookieStoreId });
           this._companionAppCtl.postAppLauch(app);
+          break;
         }
       }
     });
@@ -265,7 +284,6 @@ class AppsManager {
     const remainingAppIds = new Set(this._apps.keys());
     for (const appCfg of config.apps) {
       const appId = appCfg.id;
-      const windowTitleFingerprint = this._getWindowTitleFingerprintForAppConfig(appCfg);
       const app = this._apps.get(appId);
       if (app) {
         const currentAppTab = await app.getTab();
@@ -274,7 +292,7 @@ class AppsManager {
           appCfg,
           currentAppTab,
         });
-        app.update(appCfg, windowTitleFingerprint);
+        app.update(appCfg);
         if (currentAppTab && !app.isUrlMatches(currentAppTab.url)) {
           console.info(
             `Config update for ${appId} | Current app tab url does not match new config. Releasing app tab`,
@@ -287,7 +305,7 @@ class AppsManager {
         remainingAppIds.delete(appId);
       } else {
         console.info("Config update for %s new app added", appId, { appCfg });
-        this._apps.set(appId, new AppItem(appCfg, windowTitleFingerprint));
+        this._apps.set(appId, new AppItem(appCfg));
       }
     }
     for (const appId of remainingAppIds) {
@@ -298,13 +316,6 @@ class AppsManager {
 
     this._companionAppCtl.postConfig({ apps: config.apps });
     await this._reconsile();
-  }
-
-  _getWindowTitleFingerprintForAppConfig(appCfg) {
-    const hash = btoa(hashCode32(this._extensionInstanceUUID + (appCfg.cookieStoreId ?? "default") + appCfg.id))
-      .replace(/\=\/\+/g, "")
-      .substring(0, 4);
-    return `<TA#${appCfg.id}@${hash}>`;
   }
 
   async launch(appId, options) {
@@ -376,7 +387,7 @@ class AppsManager {
   }
 }
 
-const appsMgr = new AppsManager(new CompanionAppCtl(companionNativeAppId), { apps: [] });
+const appsMgr = new AppsManager(new CompanionAppCtl(COMPANION_NATIVE_APP_ID), { apps: [] });
 
 /**
  * @template T
@@ -442,9 +453,10 @@ browser.webNavigation.onBeforeNavigate.addListener(
         console.debug(`[DBG] Closing about:* tab=${t.id} wid=${t.windowId} url=${t.url}`, t);
         await browser.tabs.remove(details.tabId);
       } else {
-        console.debug(`Executing window.stop() on  windowId=${t.windowId} tabId=${t.id} url=${t.url}`, t);
+        console.debug(`[DBG] Executing window.stop() on  windowId=${t.windowId} tabId=${t.id} url=${t.url}`, t);
         // await browser.tabs.goBack(details.tabId)
-        await browser.tabs.executeScript(details.tabId, { code: "window.stop()" });
+        const exec = await browser.tabs.executeScript(details.tabId, { code: "window.stop()" });
+        console.debug(`[DBG] window.stop() executed`, exec);
       }
     };
 
@@ -587,7 +599,7 @@ function dump() {
   (async () => {
     for (const a of appsMgr.apps.values()) {
       const w = a.isLaunched ? await browser.windows.get(a.windowId, { populate: true }) : null;
-      console.debug(`DUMP(${a.id})`, { _current: a._lauched, a, w });
+      console.debug(`[DBG] DUMP(${a.id})`, { _current: a._lauched, a, w });
     }
   })();
 }
@@ -601,8 +613,7 @@ function getManagedApps() {
     tabId: app.tabId,
     activeUrl: app.activeUrl,
     nativeWindow: app.nativeWindow,
-    cookieStoreId: app.cookieStoreId,
-    windowTitleFingerprint: app.windowTitleFingerprint,
+    cookieStoreId: app._lauched?.cookieStoreId,
   }));
 }
 

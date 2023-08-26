@@ -63,7 +63,8 @@ class NativeClientCtl extends EventTarget {
     nativePort.onDisconnect.addListener(() => {
       const retryAfterMs = 5000;
       this.nativePort = null;
-      console.error("Disconnected from native port. error=", nativePort.error, `Retrying after ${retryAfterMs}ms`);
+      const error = nativePort.error ?? window["chrome"]?.runtime?.lastError?.message ?? "";
+      console.error("Disconnected from native port", nativePort, error, `Retrying after ${retryAfterMs}ms`);
       setTimeout(() => this._ensureConnected(), retryAfterMs);
     });
     nativePort.onMessage.addListener((msg) => {
@@ -114,13 +115,11 @@ class RichPromise extends Promise {
     this._reject = _reject;
   }
   resolve(value) {
-    console.info("RichPromise::resolve", this);
     this._timeoutRef && clearTimeout(this._timeoutRef);
     this._resolve(value);
   }
 
   reject(reason) {
-    console.info("RichPromise::reject", this);
     this._timeoutRef && clearTimeout(this._timeoutRef);
     this._reject(reason);
   }
@@ -139,3 +138,19 @@ const hashCode32 = (s) =>
     a = (a << 5) - a + b.charCodeAt(0);
     return a & a;
   }, 0);
+
+function isFirefox() {
+  return browser.runtime.getURL("").startsWith("moz-extension://");
+}
+
+function extensionName() {
+  return browser.runtime.getManifest().name;
+}
+
+function extensionId() {
+  return browser.runtime.id;
+}
+
+function extensionInstanceId() {
+  return new URL(browser.runtime.getURL("")).host;
+}

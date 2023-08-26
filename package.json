@@ -4,9 +4,10 @@
   "description": "Web Extension to handle tabs as apps",
   "main": "background.js",
   "scripts": {
-    "start:firefox": "LANGAUAGE= LANG= TABAPPS_STDERR_FILE=$PWD/tmp/companion.stderr.log TABAPPS_KEEP_TEMP_ICON_FILES=true concurrently -c auto -i -k -n firefox,native npm:run:firefox npm:native:tail",
-    "start:chromium": "LANGAUAGE= LANG= ABAPPS_STDERR_FILE=$PWD/tmp/companion.stderr.log TABAPPS_KEEP_TEMP_ICON_FILES=true concurrently -c auto -i -k -n chromium,native npm:run:chromium npm:native:tail",
-    "run:firefox": "web-ext run -t firefox-desktop --devtools --firefox-profile ./tmp/ff-profile --profile-create-if-missing --keep-profile-changes",
+    "start:firefox-desktop": "target=firefox-deskto npm run start:dev",
+    "start:chromium": "target=chromium npm run start:dev",
+    "start:dev": "TABAPPS_STDERR_FILE=$PWD/tmp/companion.stderr.log TABAPPS_KEEP_TEMP_ICON_FILES=true concurrently -c auto -i -k -n $target,native npm:run:$target npm:native:tail",
+    "run:firefox-desktop": "web-ext run -t firefox-desktop --devtools --firefox-profile ./tmp/ff-profile --profile-create-if-missing --keep-profile-changes",
     "run:chromium": "web-ext run -t chromium --devtools --chromium-profile ./tmp/chromium-profile --profile-create-if-missing --keep-profile-changes",
     "build": "web-ext build --overwrite-dest",
     "sign": "eval $(cat .env) && web-ext sign --api-key=$AMO_API_KEY --api-secret=$AMO_API_SECRET",
