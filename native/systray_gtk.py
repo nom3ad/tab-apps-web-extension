@@ -20,6 +20,8 @@ except ValueError:
     except ValueError:
         AppIndicator = None
 
+AppIndicator = None
+
 
 def glib_loop(f):
     @functools.wraps(f)
@@ -53,13 +55,13 @@ class SystrayIcon:
         cls._SYSTRAY_SINGLETON_CACHE[id] = o
         return o
 
-    def __init__(self, id, icon, title, menu_items):
+    def __init__(self, id, icon, title, menu_items, on_activate):
         print("Init()", id, file=sys.stderr, flush=True)
         self.id = id
-        self._setup(icon, title, menu_items)
+        self._setup(icon, title, menu_items, on_activate)
 
     @glib_loop
-    def _setup(self, icon, title, menu_items):
+    def _setup(self, icon, title, menu_items, on_activate):
         g_menu = Gtk.Menu.new()
         for it in menu_items:
             if it == "SEPARATOR":
@@ -91,7 +93,7 @@ class SystrayIcon:
                 )
 
             def _on_activate(icon):
-                pass
+                on_activate()
 
             g_status_icon = Gtk.StatusIcon.new()
             g_status_icon.connect("activate", _on_activate)
@@ -136,15 +138,15 @@ class SystrayIcon:
         if not cls._loop:
             cls._loop = GLib.MainLoop.new(None, False)
 
-            def register_io_watch(fd, on_data_ready, flag=GLib.IO_IN | GLib.IO_ERR | GLib.IO_HUP):
-                def _on_data_ready(*args):
-                    try:
-                        return on_data_ready(*args)
-                    finally:
-                        ref = GLib.io_add_watch(fd, flag, _on_data_ready)
-
-                ref = GLib.io_add_watch(fd, flag, _on_data_ready)
-                return ref
+            def register_io_watch(
+                fd,
+                on_data_ready,
+                flag=GLib.IOCondition.IN | GLib.IOCondition.ERR | GLib.IOCondition.HUP,
+            ):
+                chan = GLib.IOChannel.unix_new(fd)
+                # GLib removes the watch when handler returns False
+                GLib.io_add_watch(chan, flag, lambda ch, cond: bool(on_data_ready()) or True)
+                return chan
 
             cls._loop.register_io_watch = register_io_watch
         return cls._loop
