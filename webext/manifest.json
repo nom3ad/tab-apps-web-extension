@@ -3,7 +3,7 @@
   "name": "Tab Apps",
   "version": "0.2.8",
   "description": "This extension allows you to handle tab as a windowed app. Tabs handle by this extension would appear as an icon in the system tray",
-  "homepage_url": "https://github.com/nom3ad/tab-as-app-web-extension",
+  "homepage_url": "https://github.com/nom3ad/tab-apps-web-extension",
   "icons": {
     "48": "icon.png"
   },

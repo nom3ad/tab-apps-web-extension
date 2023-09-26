@@ -43,7 +43,7 @@ signal.signal(signal.SIGCHLD, lambda *_: log("SIGCHLD()") + die())
 def send(msg):
     data = json.dumps(msg, separators=(",", ":")).encode("utf-8")
     data = struct.pack("@I", len(data)) + data
-    log(f">>> {msg}")
+    log(f">>> {data!r}")
     s1.sendall(data)
 
 
@@ -52,7 +52,7 @@ def proc_read_loop():
     try:
         while True:
             length_data = f.read(4)
-            if not length_data:
+            if length_data < 4:
                 raise EOFError
             msg_len = struct.unpack("@I", length_data)[0]
             message_data = f.read(msg_len)
